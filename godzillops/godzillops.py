@@ -1,38 +1,22 @@
 # -*- coding: utf-8 -*-
 import nltk
-import random
-from nltk.corpus import wordnet
+from nltk.parse import load_parser
 
 class Chat(object):
     bot_prefixes = ['godzillops', 'godzilla', 'zilla', 'gojira']
 
     def __init__(self):
-        pass
-
-    def greet(self):
-        syn = wordnet.synsets('hello')[0]
-        return random.choice([l.name() for l in syn.lemmas()]).title()
-
-    def determine_action(self, sentences):
-        return 'greet'
-
-    def ie_preprocess(self, _input):
-        sentences = nltk.sent_tokenize(_input)
-        sentences = [nltk.word_tokenize(sent) for sent in sentences]
-        sentences = [nltk.pos_tag(sent) for sent in sentences]
-        return sentences
+        self.chart_parser = load_parser('grammars/book_grammars/feat0.fcfg', trace=1)
 
     def set_context(self, context):
+        # TODO: Use this to set information about the user - Name, TZ, etc
         pass
 
     def respond(self, _input, context=None):
         if context:
             self.set_context(context)
 
-        # Begin process of information extraction
-        sentences = self.ie_preprocess(_input)
+        tokens = _input.split()
+        chunks = self.chart_parser.parse(tokens)
 
         import pudb; pudb.set_trace()  # XXX BREAKPOINT
-        action = self.determine_action(sentences)
-
-        return self.actions[action]()
