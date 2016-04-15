@@ -17,6 +17,7 @@ with open('HISTORY.rst') as history_file:
 requirements = [
     "nltk>=3.2",
     "numpy>=1.11",
+    "scipy>=0.17",
     "python-dateutil>=2.5.2"
 ]
 
