@@ -4,7 +4,6 @@ import logging
 import os
 import random
 import urllib.request as urlreq
-from collections import defaultdict
 
 import nltk
 from nltk.corpus import conll2000
@@ -16,12 +15,12 @@ MODULE_DIR = os.path.dirname(__file__)
 class GZChunker(nltk.chunk.ChunkParserI):
 
     gz_aliases = {'godzillops', 'godzilla', 'zilla', 'gojira'}
-    singular_noun_tags = {'NN', 'NNP', 'PRP'}
 
     def __init__(self):
         self.greetings = open(os.path.join(MODULE_DIR, 'corpora', 'greetings.txt')).read().split()
 
     def parse(self, tagged_sent):
+        logging.debug(tagged_sent)
         iobs = []
         in_greeting = False
 
@@ -33,7 +32,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
                     iobs.append((word, tag, 'B-GODZILLA'))
                 else:
                     iobs.append((word, tag, 'I-GODZILLA'))
-            elif lword in self.greetings and tag in self.singular_noun_tags:
+            elif lword in self.greetings:
                 in_greeting = True
                 iobs.append((word, tag, 'I-GREETING'))
             else:
@@ -45,7 +44,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
 
 class Chat(object):
     """
-    Main class of the GozillOps chat bot. Instantiated in the Tokyo
+    Main class of the GodzillOps chat bot. Instantiated in the Tokyo
     runtime for handling responses to chat input.
     """
 
@@ -57,27 +56,32 @@ class Chat(object):
         logging.debug('Initialize Chunker')
         self.chunker = GZChunker()
 
-        self.actions = defaultdict(self.nop, **{
+        self.actions = {
+            None: self.nop,
             'GREETING': self.greet,
             'GZGIF': self.gz_gif
-        })
+        }
 
     def nop(self):
         """
         NOP Factory - be able to respond to any nonsense with this function.
         """
-        return lambda: ''
+        # TODO: List some helpful stuff or try to suggest commands based on what they said.
+        yield ''
 
     def greet(self):
-        return random.choice(self.chunker.greetings).title()
+        yield random.choice(self.chunker.greetings).title()
+        yield 'Can I help you with anything?'
 
     def gz_gif(self):
         """
         Return a random Godzilla GIF
         """
-        with urlreq.urlopen('http://api.giphy.com/v1/gifs/search?q=godzilla&api_key=dc6zaTOxFJmzC&limit=1') as r:
+        yield 'RAWR!'
+        with urlreq.urlopen('http://api.giphy.com/v1/gifs/search?q=godzilla&api_key=dc6zaTOxFJmzC') as r:
             response = json.loads(r.read().decode('utf-8'))
-            return response['data'][0]['images']['downsized']['url']
+            rand_index = random.choice(range(0,24))
+            yield response['data'][rand_index]['images']['downsized']['url']
 
     def determine_action(self, chunk_sents):
         action = None
