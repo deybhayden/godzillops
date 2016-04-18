@@ -86,6 +86,7 @@ class Chat(object):
     def determine_action(self, chunk_sents):
         action = None
         for chunk in chunk_sents:
+            logging.debug(chunk)
             for subtree in chunk.subtrees():
                 label = subtree.label()
                 if label == 'GREETING':
