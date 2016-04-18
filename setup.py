@@ -18,7 +18,8 @@ requirements = [
     "nltk>=3.2",
     "numpy>=1.11",
     "scipy>=0.17",
-    "python-dateutil>=2.5.2"
+    "python-dateutil>=2.5.2",
+    "google-api-python-client>=1.5"
 ]
 
 test_requirements = [

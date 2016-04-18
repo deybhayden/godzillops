@@ -10,6 +10,8 @@ from nltk.corpus import conll2000
 from nltk.tag.sequential import ClassifierBasedPOSTagger
 from nltk.tokenize import TreebankWordTokenizer
 
+from .google import build_admin_service
+
 MODULE_DIR = os.path.dirname(__file__)
 
 class GZChunker(nltk.chunk.ChunkParserI):
@@ -44,11 +46,21 @@ class GZChunker(nltk.chunk.ChunkParserI):
 
 class Chat(object):
     """
-    Main class of the GodzillOps chat bot. Instantiated in the Tokyo
+    Main class of the Godzillops chat bot. Instantiated in the Tokyo
     runtime for handling responses to chat input.
     """
 
-    def __init__(self):
+    def __init__(self, config):
+        """
+        Initialize the Godzillops chat bot brains.
+        Creates a tokenizer, tagger, and customized chunker for NLP.
+
+        Args:
+            config (module): Python module storing configuration variables and secrets.
+                             Used to authenticate API services and connect data stores.
+        """
+        self.config = config
+        import pudb; pudb.set_trace()  # XXX BREAKPOINT
         logging.debug('Initialize Tokenizer')
         self.tokenizer = TreebankWordTokenizer()
         logging.debug('Initialize Tagger')
@@ -82,6 +94,12 @@ class Chat(object):
             response = json.loads(r.read().decode('utf-8'))
             rand_index = random.choice(range(0,24))
             yield response['data'][rand_index]['images']['downsized']['url']
+
+    def create_google_account(self, name, old_email, groups=None):
+        if not groups:
+            groups = []
+
+
 
     def determine_action(self, chunk_sents):
         action = None
