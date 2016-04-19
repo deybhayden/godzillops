@@ -12,12 +12,13 @@ from oauth2client.service_account import ServiceAccountCredentials
 SCOPES = ['https://www.googleapis.com/auth/admin.directory.user', 'https://www.googleapis.com/auth/admin.directory.group']
 
 
-def build_admin_service(service_account_json):
+def build_admin_service(service_account_json, sub_account):
     """
-    Given a service account json object from Google, this function creates
-    a Google Admin SDK API service object and returns it.
+    Given a service account json object and super admin account email from Google Apps Domain,
+    this function creates a Google Admin SDK API service object and returns it.
     """
     credentials = ServiceAccountCredentials._from_parsed_json_keyfile(service_account_json, SCOPES)
-    http = credentials.authorize(Http())
+    delegated_creds = credentials.create_delegated(sub_account)
+    http = delegated_creds.authorize(Http())
     service = build('admin', 'directory_v1', http=http)
     return service
