@@ -4,6 +4,7 @@ import logging
 import os
 import pickle
 import random
+import re
 import tempfile
 import urllib.request as urlreq
 from collections import defaultdict
@@ -11,7 +12,6 @@ from collections import defaultdict
 import nltk
 from nltk.corpus import names, brown
 from nltk.tag.sequential import ClassifierBasedPOSTagger
-from nltk.tokenize import TreebankWordTokenizer
 
 from .google import build_admin_service
 
@@ -19,28 +19,32 @@ from .google import build_admin_service
 CACHE_DIR = os.path.join(tempfile.gettempdir(), 'godzillops')
 
 
+
 class GZChunker(nltk.chunk.ChunkParserI):
 
     create_actions = {'create', 'add', 'generate', 'make'}
     dev_titles = {'developer', 'engineer', 'coder', 'programmer'}
+    design_titles = {'creative', 'designer', 'ux'}
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo'}
     gz_aliases = {'godzillops', 'godzilla', 'zilla', 'gojira'}
+    email_regexp = re.compile('[^@]+@[^@]+\.[^@]+', re.IGNORECASE)
 
     def __init__(self):
         self.names = set(names.words())
 
-    def parse(self, tagged_sent):
-        logging.debug(tagged_sent)
+    def parse(self, tagged_text, **fill_in_dict):
+        logging.debug(tagged_text)
         iobs = []
         # in_dict is used to keep track of mid sentence context when deciding
         # how to chunk the tagged sentence into meaningful pieces.
-        in_dict = defaultdict(bool)
+        in_dict = defaultdict(bool, **fill_in_dict)
 
         i = 0
-        tagged_sent_len = len(tagged_sent)
+        tagged_len = len(tagged_text)
 
-        while i < tagged_sent_len:
-            word, tag = tagged_sent[i]
+        while i < tagged_len:
+            word, tag = tagged_text[i]
+            i += 1
             lword = word.lower()
             if lword in self.gz_aliases:
                 if in_dict['greeting']:
@@ -59,28 +63,36 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 iobs.append((word, tag, 'I-GREETING'))
             elif lword in self.create_actions and tag.startswith('VB'):
                 in_dict['create_action'] = True
-                iobs.append((word, tag, 'I-CREATE-ACTION'))
+                iobs.append((word, tag, 'I-CREATE_ACTION'))
             elif in_dict['create_action'] and lword == 'google':
                 in_dict['create_action'] = False
-                iobs.append((word, tag, 'I-CREATE-GOOGLE-ACCOUNT'))
-            elif lword == '@':
-                # Check for email address
-                (next_word, next_tag) = tagged_sent[i+1]
-                (last_word, last_tag) = tagged_sent[i-1]
-                probably_email = all(['@' not in next_word,
-                                      '@' not in last_word,
-                                      '.' in next_word])
-                if probably_email:
-                    # Remove last word, since it was probably an email
-                    iobs.pop(i-1)
-                    iobs.append((last_word + word + next_word, 'NN', 'I-EMAIL'))
-                    # Skip next word, since it was probably an email
-                    i += 1
+                in_dict['create_google_account'] = True
+                iobs.append((word, tag, 'I-CREATE_GOOGLE_ACCOUNT'))
+            elif in_dict['create_google_account'] and lword == 'title':
+                in_dict['check_for_title'] = True
+                in_dict['title'] = []
+            elif in_dict['check_for_title']:
+                probably_job_title = any([lword in self.dev_titles,
+                                          lword in self.design_titles,
+                                          tag.startswith('NP')])
+                if probably_job_title and in_dict['finding_title']:
+                    iobs.append((word, 'NP', 'I-JOB_TITLE'))
+                elif probably_job_title:
+                    iobs.append((word, 'NP', 'B-JOB_TITLE'))
+                    in_dict['finding_title'] = True
+                elif 'finding_title' in in_dict:
+                    del in_dict['finding_title']
+                    del in_dict['check_for_title']
+                    iobs.append((word, tag, 'O'))
+                else:
+                    iobs.append((word, tag, 'O'))
+            elif self.email_regexp.match(lword):
+                # This is probably an email address
+                iobs.append((word, 'NN', 'I-EMAIL'))
             else:
                 in_dict['person'] = False
                 iobs.append((word, tag, 'O'))
 
-            i += 1
 
         return nltk.chunk.conlltags2tree(iobs)
 
@@ -98,11 +110,10 @@ class Chat(object):
 
         Args:
             config (module): Python module storing configuration variables and secrets.
-                             Used to authenticate API services and connect data stores.
+                Used to authenticate API services and connect data stores.
         """
         self.config = config
-        logging.debug('Initialize Tokenizer')
-        self.tokenizer = TreebankWordTokenizer()
+
         logging.debug('Initialize Tagger')
         self._create_tagger()
         logging.debug('Initialize Chunker')
@@ -112,7 +123,7 @@ class Chat(object):
             None: self.nop,
             'GREETING': self.greet,
             'GZGIF': self.gz_gif,
-            'CREATE-GOOGLE-ACCOUNT': self.create_google_account
+            'CREATE_GOOGLE_ACCOUNT': self.create_google_account
         }
 
     def _create_tagger(self):
@@ -158,17 +169,24 @@ class Chat(object):
             rand_index = random.choice(range(0,24))
             yield response['data'][rand_index]['images']['downsized']['url']
 
-    def create_google_account(self, name, old_email, groups=None):
-        import pudb; pudb.set_trace()  # XXX BREAKPOINT
-        if not groups:
-            groups = []
+    def create_google_account(self, name, old_email, job_title=None):
+        if not job_title:
+            self.locked = True
+            self.action_state = {
+                'action': 'CREATE_GOOGLE_ACCOUNT',
+                'args': (name, old_email),
+                'kwargs': {'job_title': job_title}
+            }
+            yield "What will {}'s job title be? ".format(name)
+
 
         service = build_admin_service(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
                                       self.config.GOOGLE_SUPER_ADMIN)
 
 
 
-    def determine_action(self, chunk_sents):
+    def determine_action(self, chunked_text):
+        logging.debug(chunked_text)
         action = None
         args = ()
         kwargs = {}
@@ -176,30 +194,24 @@ class Chat(object):
         # Used to store named entities
         entity_dict = defaultdict(list)
 
-        for chunk in chunk_sents:
-            logging.debug(chunk)
-            for subtree in chunk.subtrees():
-                label = subtree.label()
-                if label == 'GREETING':
-                    action = label
-                elif label == 'GODZILLA' and not action:
-                    action = 'GZGIF'
-                elif label == 'CREATE-GOOGLE-ACCOUNT':
-                    action = label
-                elif label in ('EMAIL', 'PERSON'):
-                    entity_dict[label].append(' '.join(l[0] for l in subtree.leaves()))
+        for subtree in chunked_text.subtrees():
+            label = subtree.label()
+            if label == 'GREETING':
+                action = label
+            elif label == 'GODZILLA' and not action:
+                action = 'GZGIF'
+            elif label == 'CREATE_GOOGLE_ACCOUNT':
+                action = label
+            elif label in ('EMAIL', 'PERSON', 'JOB_TITLE'):
+                entity_dict[label].append(' '.join(l[0] for l in subtree.leaves()))
 
         # Prepare Args & Kwargs for selected action
-        if action == 'CREATE-GOOGLE-ACCOUNT':
+        if action == 'CREATE_GOOGLE_ACCOUNT':
             args = (entity_dict['PERSON'][0], entity_dict['EMAIL'][0])
+            if entity_dict['JOB_TITLE']:
+                kwargs = {'job_title': entity_dict['JOB_TITLE'][0]}
 
         return action, args, kwargs
-
-    def ie_preprocess(self, _input):
-        sents = nltk.sent_tokenize(_input)
-        sents = self.tokenizer.tokenize_sents(sents)
-        sents = self.tagger.tag_sents(sents)
-        return sents
 
     def set_context(self, context=None):
         # TODO: Use to capture username, how GZ is being chatted and Timezone
@@ -208,8 +220,8 @@ class Chat(object):
     def respond(self, _input, context=None):
         self.set_context(context)
 
-        tagged_sents = self.ie_preprocess(_input)
-        chunked_sents = self.chunker.parse_sents(tagged_sents)
-        action, args, kwargs = self.determine_action(chunked_sents)
+        tagged_text = self.tagger.tag(_input.split())
+        chunked_text = self.chunker.parse(tagged_text)
+        action, args, kwargs = self.determine_action(chunked_text)
 
         return self.actions[action](*args, **kwargs)
