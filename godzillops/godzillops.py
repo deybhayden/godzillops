@@ -24,37 +24,45 @@ from nltk.tokenize import TweetTokenizer
 
 from dateutil.tz import tzlocal
 
-from .google import build_admin_service
+from .google import GoogleAdmin
 
 
 CACHE_DIR = os.path.join(tempfile.gettempdir(), 'godzillops')
 
 
 class GZChunker(nltk.chunk.ChunkParserI):
-    """
-    Custom ChunkParser used in the godzillops.Chat class for chunking POS-tagged text.
+    """Custom ChunkParser used in the Chat class for chunking POS-tagged text.
+
     The chunks here represent named entities and action labels that help determine what
     GZ should do in response to text input.
     """
 
     # These sets are mini-corpora for checking input and determining intent
     create_actions = {'create', 'add', 'generate', 'make'}
-    dev_titles = {'developer', 'engineer', 'coder', 'programmer'}
-    design_titles = {'creative', 'designer', 'ux'}
+    dev_titles = {'data', 'scientist', 'software', 'developer', 'engineer', 'coder', 'programmer'}
+    design_titles = {'content', 'creative', 'designer', 'ux'}
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo'}
     gz_aliases = {'godzillops', 'godzilla', 'zilla', 'gojira'}
     cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
     email_regexp = re.compile('[^@]+@[^@]+\.[^@]+', re.IGNORECASE)
 
     def __init__(self):
-        """
-        Initialize the GZChunker class and any members that need to be created
-        at runtime.
-        """
+        """Initialize the GZChunker class and any members that need to be created at runtime."""
         # Create a set of names from the NLTK names corpus - used for PERSON recognition
         self.names = set(names.words())
 
     def parse(self, tagged_text, action_state):
+        """Implementing ChunkParserI's parse method.
+
+        This method parses the POS tagged text and splits the text up into actionable chunks for Godzillops.
+
+        Args:
+            tagged_text (generator): Generator containing tuples of word & POS tag.
+            action_state (dict): Current action for a given user (if mid unfinished action).
+
+        Returns:
+            Tree: Tree representing the different chunks of the text.
+        """
         logging.debug(tagged_text)
         iobs = []
         # in_dict is used to keep track of mid sentence context when deciding
@@ -106,20 +114,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 iobs.append((word, tag, 'I-CANCEL_ACTION'))
                 break
             elif in_dict['check_for_title']:
-                probably_job_title = any([lword in self.dev_titles,
-                                          lword in self.design_titles,
-                                          tag.startswith('NP')])
-                if probably_job_title and in_dict['finding_title']:
-                    iobs.append((word, 'NP', 'I-JOB_TITLE'))
-                elif probably_job_title:
-                    iobs.append((word, 'NP', 'B-JOB_TITLE'))
-                    in_dict['finding_title'] = True
-                elif 'finding_title' in in_dict:
-                    del in_dict['finding_title']
-                    del in_dict['check_for_title']
-                    iobs.append((word, tag, 'O'))
-                else:
-                    iobs.append((word, tag, 'O'))
+                iobs.append(self._parse_job_title(in_dict, word, tag, lword))
             elif self.email_regexp.match(lword):
                 # This is probably an email address
                 iobs.append((word, 'NN', 'I-EMAIL'))
@@ -130,16 +125,56 @@ class GZChunker(nltk.chunk.ChunkParserI):
 
         return nltk.chunk.conlltags2tree(iobs)
 
+    def _parse_job_title(self, in_dict, word, tag, lword):
+        """Parse Job Titles from inside the ChunkerParser
+
+        Parsing possible titles was getting complicated, so moved to helper method.
+
+        Args:
+            in_dict (dict): Dictionary for keeping track of text context.
+            word (str): Current word we are parsing (original case).
+            tag (str): Current word we are parsing's POS.
+            lword (str): Current word we are parsing (lowered case).
+
+        Returns:
+            tuple: IOB Tag containing the word, POS, and chunk label
+        """
+        probably_dev = lword in self.dev_titles
+        probably_design = lword in self.design_titles
+
+        # Use POS to capture possible google grouping
+        if probably_dev:
+            job_title_tag = 'GDEV'
+        elif probably_design:
+            job_title_tag = 'GDES'
+        else:
+            job_title_tag = 'NP'
+
+        probably_job_title = any([probably_dev,
+                                  probably_design,
+                                  tag.startswith('NP')])
+
+        if probably_job_title and in_dict['finding_title']:
+            return (word, job_title_tag, 'I-JOB_TITLE')
+        elif probably_job_title:
+            in_dict['finding_title'] = True
+            return (word, job_title_tag, 'B-JOB_TITLE')
+        elif 'finding_title' in in_dict:
+            del in_dict['finding_title']
+            del in_dict['check_for_title']
+
+        return (word, tag, 'O')
+
 
 class Chat(object):
-    """
-    Main class of the Godzillops chat bot. Instantiated in the Tokyo
-    runtime for handling responses to chat input.
+    """Main class of the Godzillops chat bot.
+
+    Instantiated in the Tokyo runtime for handling responses to chat input.
     """
 
     def __init__(self, config):
-        """
-        Initialize the Godzillops chat bot brains.
+        """Initialize the Godzillops chat bot brains.
+
         Creates a tokenizer, tagger, and customized chunker for NLP.
 
         Args:
@@ -174,10 +209,10 @@ class Chat(object):
         self.action_state = {}
 
     def _create_tagger(self):
-        """
-        Create our own classifier based POS tagger. It uses the brown corpus
-        since it is included in it's entirety (as opposed to Penn Treebank)- thus
-        using Brown POS tags - run nltk.help.brown_tagset() for descriptions
+        """Create our own classifier based POS tagger.
+
+        It uses the brown corpus since it is included in it's entirety (as opposed to Penn Treebank).
+        Meaning, Godzillops uses Brown POS tags - run nltk.help.brown_tagset() for descriptions
         of each POS tag.
         """
         if not os.path.exists(CACHE_DIR):
@@ -224,7 +259,8 @@ class Chat(object):
     #
 
     def determine_action(self, chunked_text):
-        """
+        """Determine Chat Bot's Actions
+
         This function takes a Tree of chunked text, reads through the
         different subtrees and determines what the bot should do next.
 
@@ -233,7 +269,6 @@ class Chat(object):
 
         Returns:
             tuple: A tuple with two items:
-
                 action (str): This string corresponds to the keys in the self.actions mapping.
                     Whatever the value is determines what function will be ran in self.respond.
                 kwargs (dict): Dynamic keyword arguments passed to each action function.
@@ -242,6 +277,11 @@ class Chat(object):
         action_state = self._get_action_state()
         action = action_state.get('action')
         kwargs = {}
+
+        if action == "CREATE_GOOGLE_ACCOUNT" and action_state['step'] == 'username':
+            # Short circuit subtree parsing and use all text as the given username
+            import pudb; pudb.set_trace()  # XXX BREAKPOINT
+            kwargs['username'] = chunked_text
 
         # Used to store named entities
         entity_dict = defaultdict(list)
@@ -254,13 +294,29 @@ class Chat(object):
                 action = 'GZGIF'
             elif label == 'CREATE_GOOGLE_ACCOUNT':
                 action = label
-            elif label in ('EMAIL', 'PERSON', 'JOB_TITLE'):
+            elif label in ('EMAIL', 'PERSON'):
                 entity_dict[label].append(' '.join(l[0] for l in subtree.leaves()))
+            elif label in 'JOB_TITLE':
+                # Store Full title name, and decide Google Groups based on custom POS tags
+                job_title = []
+                group_check = defaultdict(bool)
+                for l in subtree.leaves():
+                    job_title.append(l[0])
+                    group_check['GDEV'] = l[1] == 'GDEV'
+                    group_check['GDES'] = l[1] == 'GDES'
+                entity_dict[label].append(' '.join(job_title))
+
+                # Rather sure on google groups to add user to
+                # since all title pieces were categorizable by dev or design title corpus
+                if group_check['GDEV']:
+                    entity_dict['GOOGLE_GROUPS'] = ['dev', 'aws_restricted']
+                elif group_check['GDES']:
+                    entity_dict['GOOGLE_GROUPS'] = ['design']
             elif label == 'CANCEL_ACTION' and action_state['action']:
                 # Only set cancel if in a previous action
                 action = 'CANCEL'
 
-        # Prepare Args & Kwargs for selected action
+        # Prepare Kwargs for selected action
         if action != 'CANCEL':
             # Carry over previous kwargs
             kwargs = action_state.get('kwargs', {})
@@ -268,11 +324,13 @@ class Chat(object):
                 for label in ('JOB_TITLE', 'PERSON', 'EMAIL'):
                     if entity_dict[label]:
                         kwargs[label.lower()] = entity_dict[label][0]
+                kwargs['google_groups'] = entity_dict['GOOGLE_GROUPS']
 
         return action, kwargs
 
     def respond(self, _input, context=None):
-        """
+        """Respond to user input
+
         This function takes a string of input, tokenizes, tags & chunks it and then runs it through
         the determine action function to get a course of action to proceed with and executes said action.
 
@@ -284,14 +342,18 @@ class Chat(object):
         Returns:
             generator: A generator of string responses from the Godzillops bot sent from the executed action.
         """
-        self._set_context(context)
+        try:
+            self._set_context(context)
 
-        tokens = self.tokenizer.tokenize(_input)
-        tagged_text = self.tagger.tag(tokens)
-        chunked_text = self.chunker.parse(tagged_text, self._get_action_state())
-        action, kwargs = self.determine_action(chunked_text)
+            tokens = self.tokenizer.tokenize(_input)
+            tagged_text = self.tagger.tag(tokens)
+            chunked_text = self.chunker.parse(tagged_text, self._get_action_state())
+            action, kwargs = self.determine_action(chunked_text)
 
-        return self.actions[action](**kwargs)
+            return self.actions[action](**kwargs)
+        except:
+            logging.exception("An error occurred responding to the user.")
+            return ('Erm... I messed up. Try again?',)
 
     #
     # ACTION METHODS
@@ -305,10 +367,11 @@ class Chat(object):
         name = kwargs.get('person')
         email = kwargs.get('email')
         job_title = kwargs.get('job_title')
+        google_groups = kwargs.get('google_groups')
+        username = kwargs.get('username')
         all_good = name and email and job_title
 
         if not all_good:
-            self.locked = True
             self._set_action_state(action='CREATE_GOOGLE_ACCOUNT',
                                    kwargs=kwargs)
             if not name:
@@ -321,19 +384,40 @@ class Chat(object):
                 self._set_action_state(step='title')
                 yield "What will {}'s job title be?".format(name)
         else:
-            service = build_admin_service(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
-                                          self.config.GOOGLE_SUPER_ADMIN)
-            # TODO: Create Account
-            self._clear_action_state()
+            split_name = name.split(maxsplit=1)
+            given_name = split_name[0]
+            family_name = split_name[1] if len(split_name) > 1 else None
+            import pudb; pudb.set_trace()  # XXX BREAKPOINT
+            if not family_name:
+                self._set_action_state(action='CREATE_GOOGLE_ACCOUNT',
+                                       kwargs=kwargs, step='name')
+                yield "Google requires both a first and last name - lame right? What is the employee's first & last name?"
+                return
+
+            username = username or given_name.lower()
+
+            yield "Okay, let me check if '{}' is an available username".format(username)
+            ga = GoogleAdmin(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
+                             self.config.GOOGLE_SUPER_ADMIN)
+            if not ga.is_username_available(username):
+                self._set_action_state(action='CREATE_GOOGLE_ACCOUNT',
+                                       kwargs=kwargs, step='username')
+                suggestion = (given_name[0]+family_name).lower()
+                yield ("Aw nuts, that name is taken. "
+                       "Might I suggest a nickname or something like {}? "
+                       "Either way, enter a new username for me to use.".format(suggestion))
+            else:
+                yield "We're good to go! Creating the new account now."
+                ga.create_user(given_name, family_name, username, email, job_title, google_groups)
+                yield "A new google user account for {} has been created!""What is the employee's name?"
+                self._clear_action_state()
 
     def greet(self):
         yield random.choice(list(self.chunker.greetings)).title()
         yield 'Can I help you with anything?'
 
     def gz_gif(self):
-        """
-        Return a random Godzilla GIF
-        """
+        """Return a random Godzilla GIF"""
         yield 'RAWR!'
         with urlreq.urlopen('http://api.giphy.com/v1/gifs/search?q=godzilla&api_key=dc6zaTOxFJmzC') as r:
             response = json.loads(r.read().decode('utf-8'))
@@ -341,8 +425,6 @@ class Chat(object):
             yield response['data'][rand_index]['images']['downsized']['url']
 
     def nop(self):
-        """
-        NOP Factory - be able to respond to any nonsense with this function.
-        """
+        """NOP - be able to respond to any nonsense with this function."""
         # TODO: List some helpful stuff or try to suggest commands based on what they said.
         yield ''
