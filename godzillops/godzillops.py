@@ -27,17 +27,23 @@ class GZChunker(nltk.chunk.ChunkParserI):
     design_titles = {'creative', 'designer', 'ux'}
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo'}
     gz_aliases = {'godzillops', 'godzilla', 'zilla', 'gojira'}
+    cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
     email_regexp = re.compile('[^@]+@[^@]+\.[^@]+', re.IGNORECASE)
 
     def __init__(self):
         self.names = set(names.words())
 
-    def parse(self, tagged_text, **fill_in_dict):
+    def parse(self, tagged_text, action_state):
         logging.debug(tagged_text)
         iobs = []
         # in_dict is used to keep track of mid sentence context when deciding
         # how to chunk the tagged sentence into meaningful pieces.
-        in_dict = defaultdict(bool, **fill_in_dict)
+        in_dict = defaultdict(bool)
+
+        # use previous action state to default in_dict
+        if action_state.get('action') == 'CREATE_GOOGLE_ACCOUNT':
+            in_dict['create_action'] = True
+            in_dict['create_google_account'] = True
 
         i = 0
         tagged_len = len(tagged_text)
@@ -71,6 +77,11 @@ class GZChunker(nltk.chunk.ChunkParserI):
             elif in_dict['create_google_account'] and lword == 'title':
                 in_dict['check_for_title'] = True
                 in_dict['title'] = []
+            elif in_dict['create_action'] and lword in self.cancel_actions and not iobs:
+                # Only recognize cancel action by itself, and return immediately
+                # when it is encountered
+                iobs.append((word, tag, 'I-CANCEL_ACTION'))
+                break
             elif in_dict['check_for_title']:
                 probably_job_title = any([lword in self.dev_titles,
                                           lword in self.design_titles,
@@ -123,8 +134,11 @@ class Chat(object):
             None: self.nop,
             'GREETING': self.greet,
             'GZGIF': self.gz_gif,
-            'CREATE_GOOGLE_ACCOUNT': self.create_google_account
+            'CREATE_GOOGLE_ACCOUNT': self.create_google_account,
+            'CANCEL': self.cancel
         }
+
+        self.action_state = {}
 
     def _create_tagger(self):
         """
@@ -159,6 +173,10 @@ class Chat(object):
         yield random.choice(list(self.chunker.greetings)).title()
         yield 'Can I help you with anything?'
 
+    def cancel(self):
+        self.action_state = {}
+        yield "Previous action canceled. I didn't want to do it anyways."
+
     def gz_gif(self):
         """
         Return a random Godzilla GIF
@@ -169,15 +187,27 @@ class Chat(object):
             rand_index = random.choice(range(0,24))
             yield response['data'][rand_index]['images']['downsized']['url']
 
-    def create_google_account(self, name, old_email, job_title=None):
-        if not job_title:
+    def create_google_account(self, **kwargs):
+        name = kwargs.get('person')
+        email = kwargs.get('email')
+        job_title = kwargs.get('job_title')
+        all_good = name and email and job_title
+
+        if not all_good:
             self.locked = True
             self.action_state = {
                 'action': 'CREATE_GOOGLE_ACCOUNT',
-                'args': (name, old_email),
-                'kwargs': {'job_title': job_title}
+                'kwargs': kwargs
             }
-            yield "What will {}'s job title be? ".format(name)
+            if not name:
+                self.action_state['step'] = 'name'
+                yield "What is the employee's name?"
+            elif not email:
+                self.action_state['step'] = 'email'
+                yield "What is {}'s old email address?".format(name)
+            elif not job_title:
+                self.action_state['step'] = 'title'
+                yield "What will {}'s job title be?".format(name)
 
 
         service = build_admin_service(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
@@ -187,8 +217,7 @@ class Chat(object):
 
     def determine_action(self, chunked_text):
         logging.debug(chunked_text)
-        action = None
-        args = ()
+        action = self.action_state.get('action')
         kwargs = {}
 
         # Used to store named entities
@@ -204,14 +233,20 @@ class Chat(object):
                 action = label
             elif label in ('EMAIL', 'PERSON', 'JOB_TITLE'):
                 entity_dict[label].append(' '.join(l[0] for l in subtree.leaves()))
+            elif label == 'CANCEL_ACTION' and self.action_state['action']:
+                # Only set cancel if in a previous action
+                action = 'CANCEL'
 
         # Prepare Args & Kwargs for selected action
-        if action == 'CREATE_GOOGLE_ACCOUNT':
-            args = (entity_dict['PERSON'][0], entity_dict['EMAIL'][0])
-            if entity_dict['JOB_TITLE']:
-                kwargs = {'job_title': entity_dict['JOB_TITLE'][0]}
+        if action != 'CANCEL':
+            # Carry over previous kwargs
+            kwargs = self.action_state.get('kwargs', {})
+            if action == 'CREATE_GOOGLE_ACCOUNT':
+                for label in ('JOB_TITLE', 'PERSON', 'EMAIL'):
+                    if entity_dict[label]:
+                        kwargs[label.lower()] = entity_dict[label][0]
 
-        return action, args, kwargs
+        return action, kwargs
 
     def set_context(self, context=None):
         # TODO: Use to capture username, how GZ is being chatted and Timezone
@@ -221,7 +256,7 @@ class Chat(object):
         self.set_context(context)
 
         tagged_text = self.tagger.tag(_input.split())
-        chunked_text = self.chunker.parse(tagged_text)
-        action, args, kwargs = self.determine_action(chunked_text)
+        chunked_text = self.chunker.parse(tagged_text, self.action_state)
+        action, kwargs = self.determine_action(chunked_text)
 
-        return self.actions[action](*args, **kwargs)
+        return self.actions[action](**kwargs)
