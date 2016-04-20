@@ -29,7 +29,6 @@ from .google import build_admin_service
 CACHE_DIR = os.path.join(tempfile.gettempdir(), 'godzillops')
 
 
-
 class GZChunker(nltk.chunk.ChunkParserI):
     """
     Custom ChunkParser used in the godzillops.Chat class for chunking POS-tagged text.
@@ -201,11 +200,12 @@ class Chat(object):
     def _clear_action_state(self):
         self.action_state[self.context['user']] = {}
 
-    def _get_action_state(self, **action_state):
-        self.action_state.get(self.context['user'])
+    def _get_action_state(self):
+        return self.action_state.get(self.context['user'], {})
 
     def _set_action_state(self, **action_state):
-        self.action_state[self.context['user']] = action_state
+        self.action_state.setdefault(self.context['user'], {})
+        self.action_state[self.context['user']].update(action_state)
 
     def _set_context(self, context):
         if context is None:
@@ -236,7 +236,8 @@ class Chat(object):
                 kwargs (dict): Dynamic keyword arguments passed to each action function.
         """
         logging.debug(chunked_text)
-        action = self.action_state.get('action')
+        action_state = self._get_action_state()
+        action = action_state.get('action')
         kwargs = {}
 
         # Used to store named entities
@@ -252,14 +253,14 @@ class Chat(object):
                 action = label
             elif label in ('EMAIL', 'PERSON', 'JOB_TITLE'):
                 entity_dict[label].append(' '.join(l[0] for l in subtree.leaves()))
-            elif label == 'CANCEL_ACTION' and self.action_state['action']:
+            elif label == 'CANCEL_ACTION' and action_state['action']:
                 # Only set cancel if in a previous action
                 action = 'CANCEL'
 
         # Prepare Args & Kwargs for selected action
         if action != 'CANCEL':
             # Carry over previous kwargs
-            kwargs = self.action_state.get('kwargs', {})
+            kwargs = action_state.get('kwargs', {})
             if action == 'CREATE_GOOGLE_ACCOUNT':
                 for label in ('JOB_TITLE', 'PERSON', 'EMAIL'):
                     if entity_dict[label]:
@@ -307,18 +308,18 @@ class Chat(object):
             self._set_action_state(action='CREATE_GOOGLE_ACCOUNT',
                                    kwargs=kwargs)
             if not name:
-                self.action_state['step'] = 'name'
+                self._set_action_state(step='name')
                 yield "What is the employee's name?"
             elif not email:
-                self.action_state['step'] = 'email'
+                self._set_action_state(step='email')
                 yield "What is {}'s old email address?".format(name)
             elif not job_title:
-                self.action_state['step'] = 'title'
+                self._set_action_state(step='title')
                 yield "What will {}'s job title be?".format(name)
         else:
             service = build_admin_service(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
                                           self.config.GOOGLE_SUPER_ADMIN)
-            import pudb; pudb.set_trace()  # XXX BREAKPOINT
+            # TODO: Create Account
             self._clear_action_state()
 
     def greet(self):
