@@ -20,6 +20,7 @@ from datetime import datetime
 import nltk
 from nltk.corpus import names, brown
 from nltk.tag.sequential import ClassifierBasedPOSTagger
+from nltk.tokenize import TweetTokenizer
 
 from dateutil.tz import tzlocal
 
@@ -150,6 +151,8 @@ class Chat(object):
         # chatting with - user name, admin, and timezone information
         self.context = {}
 
+        logging.debug('Initialize Tokenizer')
+        self.tokenizer = TweetTokenizer()
         logging.debug('Initialize Tagger')
         self._create_tagger()
         logging.debug('Initialize Chunker')
@@ -283,7 +286,8 @@ class Chat(object):
         """
         self._set_context(context)
 
-        tagged_text = self.tagger.tag(_input.split())
+        tokens = self.tokenizer.tokenize(_input)
+        tagged_text = self.tagger.tag(tokens)
         chunked_text = self.chunker.parse(tagged_text, self._get_action_state())
         action, kwargs = self.determine_action(chunked_text)
 
