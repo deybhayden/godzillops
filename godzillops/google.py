@@ -53,38 +53,49 @@ class GoogleAdmin(object):
         delegated_creds = credentials.create_delegated(sub_account)
         http = delegated_creds.authorize(Http())
         self.sub_account = sub_account
-        self.service = build('admin', 'directory_v1', http=http)
+        self.admin_service = build('admin', 'directory_v1', http=http)
+        self.gmail_service = build('gmail', 'v1', http=http)
         self.primary_domain = self._get_primary_domain()
 
-    def create_user(self, given_name, family_name, username, old_email, job_title, groups):
+    def create_user(self, given_name, family_name, username, personal_email, job_title, groups):
         """Create a new Google user and add him/her to the list of groups passed.
 
         Args:
             given_name (str): First name of new user
             family_name (str): Last name of new user
             username (str): Used for the primary email handle / Google username.
-            old_email (str): Old email address - used to send new login credentials to
+            personal_email (str): Personal email address - used to send new login credentials to
             job_title (str): Job title of new user
             groups (list): List of google group names determined by GZChunker
         """
         email = '{}@{}'.format(username, self.primary_domain)
         emails = [{'address': email, 'primary': True, 'type': 'work'},
-                  {'address': old_email, 'type': 'other'}]
+                  {'address': personal_email, 'type': 'other'}]
         orgs = [{'primary': True, 'title': job_title}]
-        plain, b16password = self._generate_password()
+        password = self._generate_password()
 
         logging.info("Creating new google account - {}".format(email))
-        response = self.service.users().insert(customer='my_customer',
-                                               name={'givenName': given_name,
-                                                     'familyName': family_name},
-                                               password=b16password,
-                                               primaryEmail=email,
-                                               emails=emails,
-                                               organizations=orgs)
-        for group in groups:
-            logging.info("Adding {} to the '{}' group".format(email, group))
-            self.service.members().insert(groupKey=group, email=email, role='MEMBER')
+        response = (self.admin_service.users()
+                                      .insert(body={'name': {'givenName': given_name,
+                                                             'familyName': family_name},
+                                                    'password': password,
+                                                    'changePasswordAtNextLogin': True,
+                                                    'primaryEmail': email,
+                                                    'emails': emails,
+                                                    'organizations': orgs})
+                                      .execute())
 
+        yield 'User created! Going to add them to the following groups now: {}'.format(', '.join(groups))
+        for group in groups:
+            group_key = '{}@{}'.format(group, self.primary_domain)
+            logging.info("Adding {} to the '{}' group".format(email, group_key))
+            (self.admin_service.members()
+                               .insert(groupKey=group_key,
+                                       body={'email': email,
+                                             'role': 'MEMBER'})
+                               .execute())
+
+        yield 'Sending them a welcome email to their personal address with login credentials to the new account.'
         logging.info('Emailing {} the credentials of the new google account'.format(given_name))
         message_text = """
         Hello {given_name},
@@ -100,7 +111,9 @@ class GoogleAdmin(object):
 
         Start using your new account by signing in at https://www.google.com/accounts/AccountChooser?Email={email}&continue=https://apps.google.com/user/hub
         """.format(domain=self.primary_domain, **locals())
-        message = self._create_message(old_email, 'Welcome to {}'.format(self.primary_domain), message_text)
+        message = self._create_message(personal_email, 'Welcome to {}'.format(self.primary_domain), message_text)
+        # Send message as super admin
+        self.send_message('me', message)
 
     def _create_message(self, to, subject, message_text):
       """Create a message for an email.
@@ -116,9 +129,8 @@ class GoogleAdmin(object):
       message = MIMEText(message_text)
       message['to'] = to
       message['from'] = self.sub_account
-      message['cc'] = self.sub_account
       message['subject'] = subject
-      return {'raw': base64.urlsafe_b64encode(message.as_string())}
+      return {'raw': base64.urlsafe_b64encode(message.as_bytes()).decode()}
 
     def send_message(self, user_id, message):
         """Send an email message.
@@ -131,8 +143,10 @@ class GoogleAdmin(object):
         Returns:
           Sent Message.
         """
-        message = self.service.users().messages().send(userId=user_id,
-                                                       body=message).execute()
+        message = (self.gmail_service.users().messages()
+                                     .send(userId=user_id,
+                                           body=message)
+                                     .execute())
         logging.info('Sent Message Id: {}'.format(message['id']))
         return message
 
@@ -147,7 +161,7 @@ class GoogleAdmin(object):
         """
         email = '{}@{}'.format(username, self.primary_domain)
         try:
-            self.service.users().get(userKey=email).execute()
+            self.admin_service.users().get(userKey=email).execute()
             # Executed without error, meaning this user already exists
             return False
         except HttpError as error:
@@ -156,11 +170,23 @@ class GoogleAdmin(object):
                 return True
 
     def _generate_password(self):
-        plain = ''.join(random.choice(PASSWORD_CHARACTERS) for _ in range(PASSWORD_LENGTH))
-        return plain, base64.b16encode(plain.encode('ascii'))
+        """Generate a random password comprised of PASSWORD_LENGTH PASSWORD_CHARACTERS.
+
+        Returns:
+            str: A randomly generated password.
+        """
+        return ''.join(random.choice(PASSWORD_CHARACTERS)
+                       for _ in range(PASSWORD_LENGTH))
 
     def _get_primary_domain(self):
-        domain_obj = self.service.domains().list(customer='my_customer').execute()
+        """Get the primary domain for this Google Account.
+
+        Returns:
+            str: The primary domain of the google account.
+        """
+        domain_obj = (self.admin_service.domains()
+                                        .list(customer='my_customer')
+                                        .execute())
         for domain in domain_obj['domains']:
             if domain['isPrimary']:
                 return domain['domainName']

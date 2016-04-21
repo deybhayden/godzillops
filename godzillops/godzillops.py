@@ -121,7 +121,12 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 iobs.append(self._parse_job_title(in_dict, word, tag, lword))
             elif self.email_regexp.match(lword):
                 # This is probably an email address
-                iobs.append((word, 'NN', 'I-EMAIL'))
+                if lword.startswith('<mailto:') and lword.endswith('>'):
+                    # Slack auto-formats email addresses like this:
+                    # <mailto:hayden767@gmail.com|hayden767@gmail.com>
+                    # Strip that before returning in parsed tree
+                    lword = lword.split('|')[-1][:-1]
+                iobs.append((lword, 'NN', 'I-EMAIL'))
             else:
                 in_dict['person'] = False
                 iobs.append((word, tag, 'O'))
@@ -252,7 +257,7 @@ class Chat(object):
     # DETERMINE ACTION AND RESPOND
     #
 
-    def determine_action(self, chunked_text):
+    def determine_action(self, chunked_text, action_state):
         """Determine Chat Bot's Actions
 
         This function takes a Tree of chunked text, reads through the
@@ -260,6 +265,7 @@ class Chat(object):
 
         Args:
             chunked_text (Tree): A tree of chunked text produced by the GZChunker class.
+            action_state (dict): Current action for a given user (if mid unfinished action).
 
         Returns:
             tuple: A tuple with two items:
@@ -268,14 +274,12 @@ class Chat(object):
                 kwargs (dict): Dynamic keyword arguments passed to each action function.
         """
         logging.debug(chunked_text)
-        action_state = self._get_action_state()
         action = action_state.get('action')
-        kwargs = {}
+        kwargs = action_state.get('kwargs', {})
 
         if action == 'create_google_account' and action_state['step'] == 'username':
             # Short circuit subtree parsing and use all text as the given username
-            import pudb; pudb.set_trace()  # XXX BREAKPOINT
-            kwargs['username'] = chunked_text
+            kwargs['username'], _ = chunked_text.leaves()[0]
 
         # Used to store named entities
         entity_dict = defaultdict(list)
@@ -302,23 +306,21 @@ class Chat(object):
 
                 # Rather sure on google groups to add user to
                 # since all title pieces were categorizable by dev or design title corpus
-                if group_check['GDEV']:
-                    entity_dict['GOOGLE_GROUPS'] = ['dev', 'aws_restricted']
-                elif group_check['GDES']:
-                    entity_dict['GOOGLE_GROUPS'] = ['design']
+                for glabel in ('GDES', 'GDEV'):
+                    if group_check[glabel]:
+                        entity_dict['GOOGLE_GROUPS'] += self.config.GOOGLE_GROUPS[glabel]
             elif label == 'CANCEL_ACTION' and action_state['action']:
                 # Only set cancel if in a previous action
                 action = 'cancel'
 
-        # Prepare Kwargs for selected action
         if action != 'cancel':
-            # Carry over previous kwargs
-            kwargs = action_state.get('kwargs', {})
+            # Prepare New Kwarg Values for selected action
             if action == 'create_google_account':
                 for label in ('JOB_TITLE', 'PERSON', 'EMAIL'):
                     if entity_dict[label]:
                         kwargs[label.lower()] = entity_dict[label][0]
-                kwargs['google_groups'] = entity_dict['GOOGLE_GROUPS']
+                if entity_dict['GOOGLE_GROUPS']:
+                    kwargs['google_groups'] = entity_dict['GOOGLE_GROUPS']
 
         return action, kwargs
 
@@ -338,16 +340,25 @@ class Chat(object):
         """
         responses = ()
         try:
+            # Set current message context - Who are we talking too? Where are they at?
             self._set_context(context)
+            # Preprocess raw _input - Tokenize into tokens - split by space, punctuation but not on @ & #
             tokens = self.tokenizer.tokenize(_input)
+            # Tag for POS using Brown corpus ClassifierBasedPOSTagger
             tagged_text = self.tagger.tag(tokens)
-            chunked_text = self.chunker.parse(tagged_text, self._get_action_state())
-            action, kwargs = self.determine_action(chunked_text)
+            # Get current action state - if we are currently doing something for this user already.
+            action_state = self._get_action_state()
+            # Parse the text using GZChunker into actionable chunks
+            chunked_text = self.chunker.parse(tagged_text, action_state)
+            # Determine what the action should be, and prepare keyword args for the returned function
+            action, kwargs = self.determine_action(chunked_text, action_state)
             if action is not None:
+                # If we should take action, execute the function with the kwargs
+                # now and return the results
                 responses = getattr(self, action)(**kwargs)
         except:
             logging.exception("An error occurred responding to the user.")
-            responses = ('I... Erm... What? Try again.',)
+            responses = ('I... erm... what? Try again.',)
         return responses
 
     #
@@ -388,7 +399,7 @@ class Chat(object):
                 yield "What is a personal email address for {}?".format(name)
             elif not job_title:
                 self._set_action_state(step='title')
-                yield "What will {}'s job title be?".format(name)
+                yield "What is {}'s job title?".format(name)
         else:
             split_name = name.split(maxsplit=1)
             given_name = split_name[0]
@@ -414,8 +425,11 @@ class Chat(object):
                        "Either way, enter a new username for me to use.".format(suggestion))
             else:
                 yield "We're good to go! Creating the new account now."
-                ga.create_user(given_name, family_name, username, email, job_title, google_groups)
-                yield "A new google user account for {} has been created!""What is the employee's name?"
+                for response in ga.create_user(given_name, family_name,
+                                               username, email, job_title,
+                                               google_groups):
+                    yield response
+                yield "Google account creation complete! What's next?"
                 self._clear_action_state()
 
     def greet(self):
