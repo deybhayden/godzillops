@@ -9,7 +9,9 @@ NLP Chat bot capable of performing business operations
 Features
 --------
 
-* TODO
+* Can exchange basic greetings
+* Returns random Godzilla gifs when you just say its name - very important
+* Create google accounts upon request
 
 Credits
 ---------
