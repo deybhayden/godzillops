@@ -9,6 +9,7 @@ import random
 import string
 from email.mime.text import MIMEText
 
+from apiclient.errors import HttpError
 from apiclient.discovery import build
 from httplib2 import Http
 from oauth2client.service_account import ServiceAccountCredentials
@@ -27,6 +28,11 @@ PASSWORD_CHARACTERS = string.ascii_letters + string.punctuation + string.digits
 PASSWORD_LENGTH = 18
 
 class GoogleAdmin(object):
+    """GoogleAdmin class is a more usable interface to googleapiclient
+
+    This class takes a couple configuation pieces - service account keys & super admin account - and
+    returns a class instance capable of doing basic google user management.
+    """
     def __init__(self, service_account_json, sub_account):
         """Initialize Google API Service Interface
 
@@ -61,7 +67,6 @@ class GoogleAdmin(object):
         orgs = [{'primary': True, 'title': job_title}]
         plain, b16password = self._generate_password()
 
-        import pudb; pudb.set_trace()  # XXX BREAKPOINT
         logging.info("Creating new google account - {}".format(email))
         response = self.service.users().insert(customer='my_customer',
                                                name={'givenName': given_name,
@@ -106,6 +111,7 @@ class GoogleAdmin(object):
       message = MIMEText(message_text)
       message['to'] = to
       message['from'] = self.sub_account
+      message['cc'] = self.sub_account
       message['subject'] = subject
       return {'raw': base64.urlsafe_b64encode(message.as_string())}
 
@@ -134,7 +140,15 @@ class GoogleAdmin(object):
         Returns:
             bool: If the name is available, return True, False otherwise
         """
-        return False
+        email = '{}@{}'.format(username, self.primary_domain)
+        try:
+            self.service.users().get(userKey=email).execute()
+            # Executed without error, meaning this user already exists
+            return False
+        except HttpError as error:
+            if error.resp.status == 404:
+                # Error was raised since the user isn't found, meaning it's available
+                return True
 
     def _generate_password(self):
         plain = ''.join(random.choice(PASSWORD_CHARACTERS) for _ in range(PASSWORD_LENGTH))

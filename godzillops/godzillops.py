@@ -193,16 +193,6 @@ class Chat(object):
         logging.debug('Initialize Chunker')
         self.chunker = GZChunker()
 
-        # Actions is a mapping of Chunker labels to functions that
-        # Godzillops exposes as commands
-        self.actions = {
-            None: self.nop,
-            'GREETING': self.greet,
-            'GZGIF': self.gz_gif,
-            'CREATE_GOOGLE_ACCOUNT': self.create_google_account,
-            'CANCEL': self.cancel
-        }
-
         # Action state is a dictionary used for managing incomplete
         # actions - cases where Godzillops needs to clarify or ask for more
         # information before finishing an action.
@@ -289,11 +279,11 @@ class Chat(object):
         for subtree in chunked_text.subtrees():
             label = subtree.label()
             if label == 'GREETING':
-                action = label
+                action = 'greet'
             elif label == 'GODZILLA' and not action:
-                action = 'GZGIF'
+                action = 'gz_gif'
             elif label == 'CREATE_GOOGLE_ACCOUNT':
-                action = label
+                action = label.lower()
             elif label in ('EMAIL', 'PERSON'):
                 entity_dict[label].append(' '.join(l[0] for l in subtree.leaves()))
             elif label in 'JOB_TITLE':
@@ -314,13 +304,13 @@ class Chat(object):
                     entity_dict['GOOGLE_GROUPS'] = ['design']
             elif label == 'CANCEL_ACTION' and action_state['action']:
                 # Only set cancel if in a previous action
-                action = 'CANCEL'
+                action = 'cancel'
 
         # Prepare Kwargs for selected action
-        if action != 'CANCEL':
+        if action != 'cancel':
             # Carry over previous kwargs
             kwargs = action_state.get('kwargs', {})
-            if action == 'CREATE_GOOGLE_ACCOUNT':
+            if action == 'create_google_account':
                 for label in ('JOB_TITLE', 'PERSON', 'EMAIL'):
                     if entity_dict[label]:
                         kwargs[label.lower()] = entity_dict[label][0]
@@ -342,18 +332,19 @@ class Chat(object):
         Returns:
             generator: A generator of string responses from the Godzillops bot sent from the executed action.
         """
+        response = ()
         try:
             self._set_context(context)
-
             tokens = self.tokenizer.tokenize(_input)
             tagged_text = self.tagger.tag(tokens)
             chunked_text = self.chunker.parse(tagged_text, self._get_action_state())
             action, kwargs = self.determine_action(chunked_text)
-
-            return self.actions[action](**kwargs)
+            if action is not None:
+                response = getattr(self, action)(**kwargs)
         except:
             logging.exception("An error occurred responding to the user.")
-            return ('Erm... I messed up. Try again?',)
+            response = ('Erm... I messed up. Try again?',)
+        return response
 
     #
     # ACTION METHODS
@@ -376,10 +367,10 @@ class Chat(object):
                                    kwargs=kwargs)
             if not name:
                 self._set_action_state(step='name')
-                yield "What is the employee's name?"
+                yield "What is the employee's full name?"
             elif not email:
                 self._set_action_state(step='email')
-                yield "What is {}'s old email address?".format(name)
+                yield "What is a personal email address for {}?".format(name)
             elif not job_title:
                 self._set_action_state(step='title')
                 yield "What will {}'s job title be?".format(name)
@@ -387,7 +378,6 @@ class Chat(object):
             split_name = name.split(maxsplit=1)
             given_name = split_name[0]
             family_name = split_name[1] if len(split_name) > 1 else None
-            import pudb; pudb.set_trace()  # XXX BREAKPOINT
             if not family_name:
                 self._set_action_state(action='CREATE_GOOGLE_ACCOUNT',
                                        kwargs=kwargs, step='name')
@@ -395,14 +385,15 @@ class Chat(object):
                 return
 
             username = username or given_name.lower()
+            yield "Okay, let me check if '{}' is an available Google username.".format(username)
 
-            yield "Okay, let me check if '{}' is an available username".format(username)
             ga = GoogleAdmin(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
                              self.config.GOOGLE_SUPER_ADMIN)
+
             if not ga.is_username_available(username):
                 self._set_action_state(action='CREATE_GOOGLE_ACCOUNT',
                                        kwargs=kwargs, step='username')
-                suggestion = (given_name[0]+family_name).lower()
+                suggestion = (given_name[0] + family_name).lower()
                 yield ("Aw nuts, that name is taken. "
                        "Might I suggest a nickname or something like {}? "
                        "Either way, enter a new username for me to use.".format(suggestion))
@@ -423,8 +414,3 @@ class Chat(object):
             response = json.loads(r.read().decode('utf-8'))
             rand_index = random.choice(range(0,24))
             yield response['data'][rand_index]['images']['downsized']['url']
-
-    def nop(self):
-        """NOP - be able to respond to any nonsense with this function."""
-        # TODO: List some helpful stuff or try to suggest commands based on what they said.
-        yield ''
