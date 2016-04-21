@@ -5,6 +5,10 @@ This module contains the main Chat class of the godzillops library. The
 Chat class is instantiated in a running Tokyo platform and responds to user
 input. The responses are determined by NLP provided by NLTK and a custom chunker,
 GZChunker - also in this file.
+
+Attributes:
+    CACHE_DIR (str): Location of the godzillops cache directory. Stored in the system's
+        temporary directory. Used for caching the trained NLTK ClassifierBasedPOSTagger.
 """
 import json
 import logging
@@ -70,7 +74,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
         in_dict = defaultdict(bool)
 
         # use previous action state to default in_dict
-        if action_state.get('action') == 'CREATE_GOOGLE_ACCOUNT':
+        if action_state.get('action') == 'create_google_account':
             in_dict['create_action'] = True
             in_dict['create_google_account'] = True
             if action_state['step'] == 'title':
@@ -268,7 +272,7 @@ class Chat(object):
         action = action_state.get('action')
         kwargs = {}
 
-        if action == "CREATE_GOOGLE_ACCOUNT" and action_state['step'] == 'username':
+        if action == 'create_google_account' and action_state['step'] == 'username':
             # Short circuit subtree parsing and use all text as the given username
             import pudb; pudb.set_trace()  # XXX BREAKPOINT
             kwargs['username'] = chunked_text
@@ -330,9 +334,9 @@ class Chat(object):
                 information about the user sending the text (i.e. user id, timestamp of message).
 
         Returns:
-            generator: A generator of string responses from the Godzillops bot sent from the executed action.
+            responses (generator): A generator of string responses from the Godzillops bot sent from the executed action.
         """
-        response = ()
+        responses = ()
         try:
             self._set_context(context)
             tokens = self.tokenizer.tokenize(_input)
@@ -340,21 +344,32 @@ class Chat(object):
             chunked_text = self.chunker.parse(tagged_text, self._get_action_state())
             action, kwargs = self.determine_action(chunked_text)
             if action is not None:
-                response = getattr(self, action)(**kwargs)
+                responses = getattr(self, action)(**kwargs)
         except:
             logging.exception("An error occurred responding to the user.")
-            response = ('Erm... I messed up. Try again?',)
-        return response
+            responses = ('I... Erm... What? Try again.',)
+        return responses
 
     #
     # ACTION METHODS
     #
 
     def cancel(self):
+        """Clear any current action state (cancel creating a google account, for example)."""
         self._clear_action_state()
         yield "Previous action canceled. I didn't want to do it anyways."
 
     def create_google_account(self, **kwargs):
+        """Create a new Google user account
+
+        Args:
+            name (Optional[str]): Name of user, if not passed, will prompt for it.
+            email (Optional[str]): Personal email address, if not passed, will prompt for it.
+            job_title (Optional[str]): User's Job Title, if not passed, will prompt for it.
+            google_groups (Optional[list]): List of Google groups to add a user to.
+                Previously determined from job_title.
+            username (Optional[str]): Specific username for user.
+        """
         name = kwargs.get('person')
         email = kwargs.get('email')
         job_title = kwargs.get('job_title')
@@ -363,7 +378,7 @@ class Chat(object):
         all_good = name and email and job_title
 
         if not all_good:
-            self._set_action_state(action='CREATE_GOOGLE_ACCOUNT',
+            self._set_action_state(action='create_google_account',
                                    kwargs=kwargs)
             if not name:
                 self._set_action_state(step='name')
@@ -379,7 +394,7 @@ class Chat(object):
             given_name = split_name[0]
             family_name = split_name[1] if len(split_name) > 1 else None
             if not family_name:
-                self._set_action_state(action='CREATE_GOOGLE_ACCOUNT',
+                self._set_action_state(action='create_google_account',
                                        kwargs=kwargs, step='name')
                 yield "Google requires both a first and last name - lame right? What is the employee's first & last name?"
                 return
@@ -391,7 +406,7 @@ class Chat(object):
                              self.config.GOOGLE_SUPER_ADMIN)
 
             if not ga.is_username_available(username):
-                self._set_action_state(action='CREATE_GOOGLE_ACCOUNT',
+                self._set_action_state(action='create_google_account',
                                        kwargs=kwargs, step='username')
                 suggestion = (given_name[0] + family_name).lower()
                 yield ("Aw nuts, that name is taken. "
@@ -404,11 +419,12 @@ class Chat(object):
                 self._clear_action_state()
 
     def greet(self):
+        """Say Hello back in response to a greeting from the user."""
         yield random.choice(list(self.chunker.greetings)).title()
         yield 'Can I help you with anything?'
 
     def gz_gif(self):
-        """Return a random Godzilla GIF"""
+        """Return a random Godzilla GIF."""
         yield 'RAWR!'
         with urlreq.urlopen('http://api.giphy.com/v1/gifs/search?q=godzilla&api_key=dc6zaTOxFJmzC') as r:
             response = json.loads(r.read().decode('utf-8'))

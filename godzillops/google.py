@@ -1,7 +1,17 @@
+# -*- coding: utf-8 -*-
 """google.py - Google API methods
 
 The GoogleAdmin class serves as an interface to Google APIs for interacting
 with  Google Admin SDK for creating users and managing groups.
+
+Attributes:
+    PASSWORD_CHARACTERS (str): All possible password characters used in generating
+        random user passwords.
+    PASSWORD_LENGTH (int): The default generated password length.
+    SCOPES (list[str]): Google API Scopes to create authorized tokens against. If
+        modifying these scopes, delete your previously saved credentials located in
+        your system's temporary directory - they'll be named something
+        like 'google-api-python-client-discovery-doc.cache'
 """
 import base64
 import logging
@@ -15,17 +25,13 @@ from httplib2 import Http
 from oauth2client.service_account import ServiceAccountCredentials
 
 
-# If modifying these scopes, delete your previously saved credentials
-# located in your system's temporary directory - they'll be named something
-# like 'google-api-python-client-discovery-doc.cache'
+PASSWORD_CHARACTERS = string.ascii_letters + string.punctuation + string.digits
+PASSWORD_LENGTH = 18
 SCOPES = ['https://www.googleapis.com/auth/admin.directory.domain.readonly',
           'https://www.googleapis.com/auth/admin.directory.user',
           'https://www.googleapis.com/auth/admin.directory.group',
           'https://www.googleapis.com/auth/gmail.send']
 
-# Possible password characters and length of generated password
-PASSWORD_CHARACTERS = string.ascii_letters + string.punctuation + string.digits
-PASSWORD_LENGTH = 18
 
 class GoogleAdmin(object):
     """GoogleAdmin class is a more usable interface to googleapiclient
@@ -73,7 +79,6 @@ class GoogleAdmin(object):
                                                      'familyName': family_name},
                                                password=b16password,
                                                primaryEmail=email,
-                                               changePasswordAtNextLogin=True,
                                                emails=emails,
                                                organizations=orgs)
         for group in groups:
