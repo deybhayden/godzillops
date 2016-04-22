@@ -2,7 +2,7 @@
 """google.py - Google API methods
 
 The GoogleAdmin class serves as an interface to Google APIs for interacting
-with  Google Admin SDK for creating users and managing groups.
+with Google Admin SDK for creating users and managing groups.
 
 Attributes:
     PASSWORD_CHARACTERS (str): All possible password characters used in generating
@@ -36,7 +36,7 @@ SCOPES = ['https://www.googleapis.com/auth/admin.directory.domain.readonly',
 class GoogleAdmin(object):
     """GoogleAdmin class is a more usable interface to googleapiclient
 
-    This class takes a couple configuation pieces - service account keys & super admin account - and
+    This class takes a couple configuration pieces - service account keys & super admin account - and
     returns a class instance capable of doing basic google user management.
     """
     def __init__(self, service_account_json, sub_account):

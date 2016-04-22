@@ -29,6 +29,7 @@ from nltk.tokenize import TweetTokenizer
 from dateutil.tz import tzlocal
 
 from .google import GoogleAdmin
+from .trello import TrelloAdmin
 
 
 CACHE_DIR = os.path.join(tempfile.gettempdir(), 'godzillops')
@@ -43,9 +44,10 @@ class GZChunker(nltk.chunk.ChunkParserI):
 
     # These sets are mini-corpora for checking input and determining intent
     create_actions = {'create', 'add', 'generate', 'make'}
+    invite_actions = {'add', 'invite'}
     dev_titles = {'data', 'scientist', 'software', 'developer', 'engineer', 'coder', 'programmer'}
     design_titles = {'content', 'creative', 'designer', 'ux'}
-    greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo'}
+    greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo', 'howdy'}
     gz_aliases = {'godzillops', 'godzilla', 'zilla', 'gojira'}
     cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
     email_regexp = re.compile('[^@]+@[^@]+\.[^@]+', re.IGNORECASE)
@@ -55,6 +57,28 @@ class GZChunker(nltk.chunk.ChunkParserI):
         # Create a set of names from the NLTK names corpus - used for PERSON recognition
         self.names = set(names.words())
 
+    def _generate_in_dict(self, action_state):
+        """Use previous action state to default in_dict
+
+        Args:
+            action_state (dict): Current action for a given user (if in the middle of an unfinished action).
+        Returns:
+            in_dict (dict): Used to keep track of mid-sentence context when deciding
+                how to chunk the tagged sentence into meaningful pieces.
+        """
+        in_dict = defaultdict(bool)
+
+        if action_state.get('action') == 'create_google_account':
+            in_dict['create_action'] = True
+            in_dict['create_google_account'] = True
+            if action_state['step'] == 'title':
+                in_dict['check_for_title'] = True
+        elif action_state.get('action') == 'invite_to_trello':
+            in_dict['invite_action'] = True
+            in_dict['invite_google_account'] = True
+
+        return in_dict
+
     def parse(self, tagged_text, action_state):
         """Implementing ChunkParserI's parse method.
 
@@ -62,24 +86,15 @@ class GZChunker(nltk.chunk.ChunkParserI):
 
         Args:
             tagged_text (generator): Generator containing tuples of word & POS tag.
-            action_state (dict): Current action for a given user (if mid unfinished action).
+            action_state (dict): Current action for a given user (if in the middle of an unfinished action).
 
         Returns:
             Tree: Tree representing the different chunks of the text.
         """
         logging.debug(tagged_text)
+
         iobs = []
-        # in_dict is used to keep track of mid sentence context when deciding
-        # how to chunk the tagged sentence into meaningful pieces.
-        in_dict = defaultdict(bool)
-
-        # use previous action state to default in_dict
-        if action_state.get('action') == 'create_google_account':
-            in_dict['create_action'] = True
-            in_dict['create_google_account'] = True
-            if action_state['step'] == 'title':
-                in_dict['check_for_title'] = True
-
+        in_dict = self._generate_in_dict(action_state)
         i = 0
         tagged_len = len(tagged_text)
 
@@ -87,38 +102,21 @@ class GZChunker(nltk.chunk.ChunkParserI):
             word, tag = tagged_text[i]
             i += 1
             lword = word.lower()
+            # They said our name!
             if lword in self.gz_aliases:
-                if in_dict['greeting']:
-                    in_dict['greeting'] = False
-                    iobs.append((word, tag, 'B-GODZILLA'))
-                else:
-                    iobs.append((word, tag, 'I-GODZILLA'))
+                iobs.append((word, tag, 'I-GODZILLA'))
+            # They said hello!
+            elif lword in self.greetings:
+                in_dict['greeting'] = True
+                iobs.append((word, tag, 'I-GREETING'))
+            # Named Entity Recognition - Find People
             elif word in self.names or in_dict['person'] and tag.startswith('NP'):
                 if in_dict['person']:
                     iobs.append((word, tag, 'I-PERSON'))
                 else:
                     iobs.append((word, tag, 'B-PERSON'))
                     in_dict['person'] = True
-            elif lword in self.greetings:
-                in_dict['greeting'] = True
-                iobs.append((word, tag, 'I-GREETING'))
-            elif lword in self.create_actions and tag.startswith('VB'):
-                in_dict['create_action'] = True
-                iobs.append((word, tag, 'I-CREATE_ACTION'))
-            elif in_dict['create_action'] and lword == 'google':
-                in_dict['create_action'] = False
-                in_dict['create_google_account'] = True
-                iobs.append((word, tag, 'I-CREATE_GOOGLE_ACCOUNT'))
-            elif in_dict['create_google_account'] and lword == 'title':
-                in_dict['check_for_title'] = True
-                in_dict['title'] = []
-            elif in_dict['create_action'] and lword in self.cancel_actions and not iobs:
-                # Only recognize cancel action by itself, and return immediately
-                # when it is encountered
-                iobs.append((word, tag, 'I-CANCEL_ACTION'))
-                break
-            elif in_dict['check_for_title']:
-                iobs.append(self._parse_job_title(in_dict, word, tag, lword))
+            # Named Entity Recognition - Find Emails
             elif self.email_regexp.match(lword):
                 # This is probably an email address
                 if lword.startswith('<mailto:') and lword.endswith('>'):
@@ -127,6 +125,42 @@ class GZChunker(nltk.chunk.ChunkParserI):
                     # Strip that before returning in parsed tree
                     lword = lword.split('|')[-1][:-1]
                 iobs.append((lword, 'NN', 'I-EMAIL'))
+            # CREATE ACTIONS
+            elif lword in self.create_actions and tag.startswith('VB'):
+                in_dict['create_action'] = True
+                if lword in self.invite_actions:
+                    # 'add' is shared by both, no harm (yet) in setting both
+                    in_dict['invite_action'] = True
+                iobs.append((word, tag, 'O'))
+            elif in_dict['create_action'] and lword == 'google':
+                in_dict['create_google_account'] = True
+                iobs.append((word, tag, 'I-CREATE_GOOGLE_ACCOUNT'))
+            elif in_dict['create_google_account'] and lword == 'title':
+                in_dict['check_for_title'] = True
+                in_dict['title'] = []
+                iobs.append((word, tag, 'O'))
+            elif in_dict['check_for_title']:
+                iobs.append(self._parse_job_title(in_dict, word, tag, lword))
+            # INVITE ACTIONS
+            elif lword in self.invite_actions and tag.startswith('VB'):
+                in_dict['invite_action'] = True
+                iobs.append((word, tag, 'O'))
+            elif in_dict['invite_action'] and lword == 'trello':
+                in_dict['invite_to_trello'] = True
+                iobs.append((word, tag, 'I-INVITE_TO_TRELLO'))
+            # CANCEL ACTION
+            elif lword in self.cancel_actions and not iobs:
+                got_something_to_cancel = False
+                for running_action in ('create_action', 'invite_action'):
+                    if in_dict[running_action]:
+                        got_something_to_cancel = True
+                        break
+                if got_something_to_cancel:
+                    # Only recognize cancel action by itself, and return immediately
+                    # when it is encountered
+                    iobs.append((word, tag, 'I-CANCEL'))
+                    break
+            # Just a word, tag it and move on
             else:
                 in_dict['person'] = False
                 iobs.append((word, tag, 'O'))
@@ -201,6 +235,13 @@ class Chat(object):
         self._create_tagger()
         logging.debug('Initialize Chunker')
         self.chunker = GZChunker()
+
+        # API Admin Classes - used to execute API-driven actions
+        self.google_admin = GoogleAdmin(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
+                                        self.config.GOOGLE_SUPER_ADMIN)
+        self.trello_admin = TrelloAdmin(self.config.TRELLO_ORG,
+                                        self.config.TRELLO_API_KEY,
+                                        self.config.TRELLO_TOKEN)
 
         # Action state is a dictionary used for managing incomplete
         # actions - cases where Godzillops needs to clarify or ask for more
@@ -287,10 +328,12 @@ class Chat(object):
         for subtree in chunked_text.subtrees():
             label = subtree.label()
             if label == 'GREETING':
+                # Default to say hi, if they did - will probably be overridden
                 action = 'greet'
             elif label == 'GODZILLA' and not action:
+                # Return a gif if they didn't say anything but our name
                 action = 'gz_gif'
-            elif label == 'CREATE_GOOGLE_ACCOUNT':
+            elif label in ('CREATE_GOOGLE_ACCOUNT', 'INVITE_TO_TRELLO'):
                 action = label.lower()
             elif label in ('EMAIL', 'PERSON'):
                 entity_dict[label].append(' '.join(l[0] for l in subtree.leaves()))
@@ -309,13 +352,13 @@ class Chat(object):
                 for glabel in ('GDES', 'GDEV'):
                     if group_check[glabel]:
                         entity_dict['GOOGLE_GROUPS'] += self.config.GOOGLE_GROUPS[glabel]
-            elif label == 'CANCEL_ACTION' and action_state['action']:
+            elif label == 'CANCEL' and action_state['action']:
                 # Only set cancel if in a previous action
                 action = 'cancel'
 
         if action != 'cancel':
             # Prepare New Kwarg Values for selected action
-            if action == 'create_google_account':
+            if action in ('create_google_account', 'invite_to_trello'):
                 for label in ('JOB_TITLE', 'PERSON', 'EMAIL'):
                     if entity_dict[label]:
                         kwargs[label.lower()] = entity_dict[label][0]
@@ -365,7 +408,7 @@ class Chat(object):
     # ACTION METHODS
     #
 
-    def cancel(self):
+    def cancel(self, **kwargs):
         """Clear any current action state (cancel creating a google account, for example)."""
         self._clear_action_state()
         yield "Previous action canceled. I didn't want to do it anyways."
@@ -413,10 +456,7 @@ class Chat(object):
             username = username or given_name.lower()
             yield "Okay, let me check if '{}' is an available Google username.".format(username)
 
-            ga = GoogleAdmin(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
-                             self.config.GOOGLE_SUPER_ADMIN)
-
-            if not ga.is_username_available(username):
+            if not self.google_admin.is_username_available(username):
                 self._set_action_state(action='create_google_account',
                                        kwargs=kwargs, step='username')
                 suggestion = (given_name[0] + family_name).lower()
@@ -425,19 +465,47 @@ class Chat(object):
                        "Either way, enter a new username for me to use.".format(suggestion))
             else:
                 yield "We're good to go! Creating the new account now."
-                for response in ga.create_user(given_name, family_name,
-                                               username, email, job_title,
-                                               google_groups):
+                for response in self.google_admin.create_user(given_name, family_name,
+                                                              username, email, job_title,
+                                                              google_groups):
                     yield response
                 yield "Google account creation complete! What's next?"
                 self._clear_action_state()
 
-    def greet(self):
+    def invite_to_trello(self, **kwargs):
+        """Invite a user to a Trello organization
+
+        Args:
+            name (Optional[str]): Name of user, if not passed, will prompt for it.
+            email (Optional[str]): Google apps address, if not passed, will prompt for it.
+        """
+        name = kwargs.get('person')
+        email = kwargs.get('email')
+        all_good = name and email
+
+        if not all_good:
+            self._set_action_state(action='invite_to_trello',
+                                   kwargs=kwargs)
+            if not name:
+                self._set_action_state(step='name')
+                yield "What is the user's full name?"
+            elif not email or not email.endswith(self.google_admin.primary_domain):
+                self._set_action_state(step='email')
+                yield "What is {}'s {} email address?".format(name, self.google_admin.primary_domain)
+        else:
+            success = self.trello_admin.invite_to_trello(email, name)
+            if success:
+                yield "I have invited {} to join {} in Trello!".format(email, self.trello_admin.trello_org)
+            else:
+                yield "Huh, that didn't work, check out the logs?"
+            self._clear_action_state()
+
+    def greet(self, **kwargs):
         """Say Hello back in response to a greeting from the user."""
         yield random.choice(list(self.chunker.greetings)).title()
         yield 'Can I help you with anything?'
 
-    def gz_gif(self):
+    def gz_gif(self, **kwargs):
         """Return a random Godzilla GIF."""
         yield 'RAWR!'
         with urlreq.urlopen('http://api.giphy.com/v1/gifs/search?q=godzilla&api_key=dc6zaTOxFJmzC') as r:
