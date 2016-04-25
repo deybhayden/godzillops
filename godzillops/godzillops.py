@@ -50,6 +50,8 @@ class GZChunker(nltk.chunk.ChunkParserI):
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo', 'howdy'}
     gz_aliases = {'godzillops', 'godzilla', 'zilla', 'gojira'}
     cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
+    yes = {'yes', 'yeah', 'yep', 'yup', 'sure'}
+    no = {'no', 'nope', 'nah'}
     email_regexp = re.compile('[^@]+@[^@]+\.[^@]+', re.IGNORECASE)
 
     def __init__(self):
@@ -67,15 +69,16 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 how to chunk the tagged sentence into meaningful pieces.
         """
         in_dict = defaultdict(bool)
+        action = action_state.get('action')
 
-        if action_state.get('action') == 'create_google_account':
+        if action == 'create_google_account':
             in_dict['create_action'] = True
             in_dict['create_google_account'] = True
             if action_state['step'] == 'title':
                 in_dict['check_for_title'] = True
-        elif action_state.get('action') == 'invite_to_trello':
+        elif action == 'invite_to_trello':
             in_dict['invite_action'] = True
-            in_dict['invite_google_account'] = True
+            in_dict['invite_to_trello'] = True
 
         return in_dict
 
@@ -412,6 +415,28 @@ class Chat(object):
         """Clear any current action state (cancel creating a google account, for example)."""
         self._clear_action_state()
         yield "Previous action canceled. I didn't want to do it anyways."
+
+    # TODO: Figure out action chaining & confirmation
+    # def confirm(self, **kwargs):
+    #     """Confirm via Yes/No text if the next action in a chain of actions should be ran.
+
+    #     Args:
+    #         run_action (bool): If true, run the 'next_action' function, otherwise don't.
+    #         action_chain list[tuple]: A list of pairs, matching a message to prompt the user for confirmation and an action function to run.
+    #     """
+    #     run_action = kwargs.pop('run_action')
+    #     action_chain = kwargs.pop('action_chain')
+    #     if action_chain:
+    #         _, next_action = action_chain.pop()
+    #         if run_action:
+    #             for response in getattr(self, next_action)(**kwargs):
+    #                 yield response
+    #             kwargs['action_chain'] = action_chain
+    #             self._set_action_state(action='confirm',
+    #                                    kwargs=kwargs)
+    #             yield action_chain[0][0]
+    #     else:
+    #         self._clear_action_state()
 
     def create_google_account(self, **kwargs):
         """Create a new Google user account
