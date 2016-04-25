@@ -8,21 +8,30 @@ test_godzillops
 Tests for `godzillops` module.
 """
 
+import os
+import sys
+sys.path.append(os.path.dirname(__file__))
 import unittest
+from unittest.mock import Mock
 
 from godzillops import godzillops
+import config_test
 
 
-class TestGodzillops(unittest.TestCase):
+class TestChat(unittest.TestCase):
 
     def setUp(self):
-        pass
+        self.google_mock = Mock()
+        self.trello_mock = Mock()
+        godzillops.GoogleAdmin = self.google_mock
+        godzillops.TrelloAdmin = self.trello_mock
+        self.chat = godzillops.Chat(config_test)
 
     def tearDown(self):
         pass
 
-    def test_000_something(self):
-        pass
+    def test_000_chat_init_successful(self):
+        self.assertEqual(self.chat.config.PLATFORM, 'text')
 
 
 if __name__ == '__main__':
