@@ -33,6 +33,13 @@ class TestChat(unittest.TestCase):
     def test_000_chat_init_successful(self):
         self.assertEqual(self.chat.config.PLATFORM, 'text')
 
+    def test_001_say_hello_gz(self):
+        responses = self.chat.respond('Hi Godzilla!')
+        for index, response in enumerate(responses):
+            if not index:
+                # make sure he said hi back
+                self.assertIn(response.lower(), self.chat.chunker.greetings)
+
 
 if __name__ == '__main__':
     import sys
