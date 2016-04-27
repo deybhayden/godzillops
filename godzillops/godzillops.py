@@ -442,43 +442,39 @@ class Chat(object):
         """Create a new Google user account
 
         Args:
-            name (Optional[str]): Name of user, if not passed, will prompt for it.
+            person (Optional[str]): Full name of user, if not passed, will prompt for it.
             email (Optional[str]): Personal email address, if not passed, will prompt for it.
             job_title (Optional[str]): User's Job Title, if not passed, will prompt for it.
             google_groups (Optional[list]): List of Google groups to add a user to.
                 Previously determined from job_title.
             username (Optional[str]): Specific username for user.
         """
-        name = kwargs.get('person')
+        split_name = kwargs.get('person', '').split(maxsplit=1)
+        split_name_len = len(split_name)
+        if split_name_len == 2:
+            given_name, family_name = split_name
+        elif split_name_len == 1:
+            given_name, family_name = split_name[0], None
+        else:
+            given_name, family_name = None, None
         email = kwargs.get('email')
         job_title = kwargs.get('job_title')
-        google_groups = kwargs.get('google_groups')
-        username = kwargs.get('username')
-        all_good = name and email and job_title
+        all_good = given_name and family_name and email and job_title
 
         if not all_good:
             self._set_action_state(action='create_google_account',
                                    kwargs=kwargs)
-            if not name:
+            if not (given_name and family_name):
                 self._set_action_state(step='name')
-                yield "What is the employee's full name?"
+                yield "What is the employee's full name (first & last)?"
             elif not email:
                 self._set_action_state(step='email')
-                yield "What is a personal email address for {}?".format(name)
+                yield "What is a personal email address for {}?".format(given_name)
             elif not job_title:
                 self._set_action_state(step='title')
-                yield "What is {}'s job title?".format(name)
+                yield "What is {}'s job title?".format(given_name)
         else:
-            split_name = name.split(maxsplit=1)
-            given_name = split_name[0]
-            family_name = split_name[1] if len(split_name) > 1 else None
-            if not family_name:
-                self._set_action_state(action='create_google_account',
-                                       kwargs=kwargs, step='name')
-                yield "Google requires both a first and last name - lame right? What is the employee's first & last name?"
-                return
-
-            username = username or given_name.lower()
+            username = kwargs.get('username', given_name.lower())
             yield "Okay, let me check if '{}' is an available Google username.".format(username)
 
             if not self.google_admin.is_username_available(username):
@@ -490,10 +486,10 @@ class Chat(object):
                        "Either way, enter a new username for me to use.".format(suggestion))
             else:
                 yield "We're good to go! Creating the new account now."
-                for response in self.google_admin.create_user(given_name, family_name,
-                                                              username, email, job_title,
-                                                              google_groups):
-                    yield response
+                responses = self.google_admin.create_user(given_name, family_name,
+                                                          username, email, job_title,
+                                                          kwargs.get('google_groups'))
+                for response in responses: yield response
                 yield "Google account creation complete! What's next?"
                 self._clear_action_state()
 
@@ -501,7 +497,7 @@ class Chat(object):
         """Invite a user to a Trello organization
 
         Args:
-            name (Optional[str]): Name of user, if not passed, will prompt for it.
+            person (Optional[str]): Name of user, if not passed, will prompt for it.
             email (Optional[str]): Google apps address, if not passed, will prompt for it.
         """
         name = kwargs.get('person')
