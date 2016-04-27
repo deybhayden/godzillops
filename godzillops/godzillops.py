@@ -48,7 +48,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
     dev_titles = {'data', 'scientist', 'software', 'developer', 'engineer', 'coder', 'programmer'}
     design_titles = {'content', 'creative', 'designer', 'ux'}
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo', 'howdy'}
-    gz_aliases = {'godzillops', 'godzilla', 'zilla', 'gojira'}
+    gz_aliases = {'godzillops', 'godzilla', 'zilla', 'gojira', 'gz'}
     cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
     yes = {'yes', 'yeah', 'yep', 'yup', 'sure'}
     no = {'no', 'nope', 'nah'}
