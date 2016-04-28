@@ -85,7 +85,7 @@ class GoogleAdmin(object):
                                                     'organizations': orgs})
                                       .execute())
 
-        yield 'User created! Going to add them to the following groups now: {}'.format(', '.join(groups))
+        yield 'User created! Going to add them to the following groups now: *{}*'.format(', '.join(groups))
         for group in groups:
             group_key = '{}@{}'.format(group, self.primary_domain)
             logging.info("Adding {} to the '{}' group".format(email, group_key))

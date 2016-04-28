@@ -113,7 +113,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 in_dict['greeting'] = True
                 iobs.append((word, tag, 'I-GREETING'))
             # Named Entity Recognition - Find People
-            elif word in self.names or in_dict['person'] and tag.startswith('NP'):
+            elif word in self.names or in_dict['person'] and (word[0].isupper() or tag.startswith('NP')):
                 if in_dict['person']:
                     iobs.append((word, tag, 'I-PERSON'))
                 else:
@@ -516,7 +516,7 @@ class Chat(object):
         else:
             success = self.trello_admin.invite_to_trello(email, name)
             if success:
-                yield "I have invited {} to join {} in Trello!".format(email, self.trello_admin.trello_org)
+                yield "I have invited {} to join *{}* in Trello!".format(email, self.trello_admin.trello_org)
             else:
                 yield "Huh, that didn't work, check out the logs?"
             self._clear_action_state()
@@ -529,7 +529,7 @@ class Chat(object):
     def gz_gif(self, **kwargs):
         """Return a random Godzilla GIF."""
         yield 'RAWR!'
-        with urlreq.urlopen('http://api.giphy.com/v1/gifs/search?q=godzilla&api_key=dc6zaTOxFJmzC') as r:
+        with urlreq.urlopen(self.config.GZ_GIF_URL) as r:
             response = json.loads(r.read().decode('utf-8'))
             rand_index = random.choice(range(0,24))
             yield response['data'][rand_index]['images']['downsized']['url']

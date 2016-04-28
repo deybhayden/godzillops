@@ -1,6 +1,7 @@
 import logging
 LOG_LEVEL = logging.DEBUG
 PLATFORM = "text"
+GZ_GIF_URL = "http://api.giphy.com/v1/gifs/search?q=godzilla&api_key=dc6zaTOxFJmzC"
 # === SLACK ===
 SLACK_TOKEN = "xoxb-12345678910-asdfasdfasdfasdfasdfasdf"
 SLACK_USER = "U12345678"

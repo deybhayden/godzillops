@@ -12,20 +12,33 @@ import os
 import shutil
 import sys
 import unittest
+import urllib.parse as urlparse
 from functools import partial
 from unittest.mock import Mock, patch
 
 from apiclient.errors import HttpError
 from httplib2 import Response
-from godzillops import godzillops, google, trello
+from godzillops import godzillops
 
 sys.path.append(os.path.dirname(__file__))
 import config_test
+
 
 def apiclient_mock_creator(mocks):
     def apiclient_build_mock(*args, **kwargs):
         return mocks[args[0]]
     return apiclient_build_mock
+
+
+class MockUrllibResponse(object):
+    def __init__(self, status, content=None):
+        self.status = status
+        if content and not isinstance(content, bytes):
+            raise ValueError('content must be in bytes')
+        self.content = content
+
+    def read(self):
+        return self.content
 
 
 class TestChat(unittest.TestCase):
@@ -45,10 +58,21 @@ class TestChat(unittest.TestCase):
 
         Make sure that we create and mock all API pieces - i.e. Google API objects & Trello urllib calls.
         """
-        # Create our per-test mocks
+        # First, we need to create our per-test mocks
+
+        # == Godzillops ==
         self.logging_mock = Mock(name='logging')
-        self.logging_patch = patch('godzillops.godzillops.logging', self.logging_mock)
-        self.logging_patch.start()
+        self.gz_urlreq = Mock(name='urlreq')
+        self.gz_urlresp = MockUrllibResponse(status=200)
+        self.gz_urlreq.urlopen.return_value = Mock(name='urlopen',
+                                                   __enter__=Mock(return_value=self.gz_urlresp),
+                                                   __exit__=Mock(return_value=False))
+        self.gz_patch = patch.multiple('godzillops.godzillops',
+                                       logging=self.logging_mock,
+                                       urlreq=self.gz_urlreq)
+        self.gz_patch.start()
+
+        # == Google Mocks ==
         self.service_cred_mock = Mock(name='ServiceAccountCredentials')
         self.admin_service_mock = Mock(name='admin_service')
         self.admin_service_mock.domains().list(customer='my_customer').execute = Mock(return_value={'domains': [{'isPrimary': True, 'domainName': 'example.com'},
@@ -61,12 +85,21 @@ class TestChat(unittest.TestCase):
                                            build=self.apiclient_build_mock)
         self.google_patch.start()
 
+        # == Trello Mocks ==
+        self.trello_urlreq = Mock(name='urlreq')
+        self.trello_urlreq.urlopen.return_value = Mock(name='urlopen',
+                                                       __enter__=Mock(return_value=MockUrllibResponse(status=200)),
+                                                       __exit__=Mock(return_value=False))
+        self.trello_patch = patch('godzillops.trello.urlreq', self.trello_urlreq)
+        self.trello_patch.start()
+
         # Mocking & Patching all done, create a patched instance of our Chat class - sans Logging/API pieces
         self.chat = godzillops.Chat(config_test)
 
     def tearDown(self):
+        self.trello_patch.stop()
         self.google_patch.stop()
-        self.logging_patch.stop()
+        self.gz_patch.stop()
 
     def test_000_chat_init_successful(self):
         self.assertEqual(self.chat.config.PLATFORM, 'text')
@@ -86,11 +119,13 @@ class TestChat(unittest.TestCase):
                 self.assertIn(response.lower(), self.chat.chunker.greetings)
 
     def test_002_gz_gif(self):
+        self.gz_urlresp.content = b'{"data":[{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}}]}'
         responses = self.chat.respond('Gojira!')
         expected_responses = [partial(self.assertEqual, 'RAWR!'),
                               partial(self.assertIn, 'giphy.com')]
         for index, response in enumerate(responses):
             expected_responses[index](response)
+        self.gz_urlreq.urlopen.assert_called_with(self.chat.config.GZ_GIF_URL)
 
     def test_003_create_google_account(self):
         """Create google account with a single Chat.respond call."""
@@ -104,7 +139,7 @@ class TestChat(unittest.TestCase):
                                       ' Software Engineer.')
         expected_responses = [partial(self.assertIn, "'bill' is an available Google username."),
                               partial(self.assertIn, 'good to go'),
-                              partial(self.assertIn, 'groups now: dev'),
+                              partial(self.assertIn, 'groups now: *dev*'),
                               partial(self.assertIn, 'Sending them a welcome email'),
                               partial(self.assertIn, 'Google account creation complete!')]
         for index, response in enumerate(responses):
@@ -138,7 +173,7 @@ class TestChat(unittest.TestCase):
         responses = self.chat.respond('btester')
         expected_responses = [partial(self.assertIn, "'btester' is an available Google username."),
                               partial(self.assertIn, 'good to go'),
-                              partial(self.assertIn, 'groups now: design'),
+                              partial(self.assertIn, 'groups now: *design*'),
                               partial(self.assertIn, 'Sending them a welcome email'),
                               partial(self.assertIn, 'Google account creation complete!')]
         for index, response in enumerate(responses):
@@ -146,12 +181,17 @@ class TestChat(unittest.TestCase):
 
     def test_005_invite_to_trello(self):
         """Test adding a user to trello."""
+        (response,) = self.chat.respond('I need to add Bill Tester to Trello')
+        self.assertEqual("What is Bill Tester's example.com email address?", response)
+        (response,) = self.chat.respond('bill@example.com')
+        members_url = self.chat.trello_admin.trello_api_url.format('organizations/yourorg/members')
+        data = urlparse.urlencode({'email': 'bill@example.com', 'fullName': 'Bill Tester'}).encode()
+        self.trello_urlreq.Request.assert_called_with(url=members_url, data=data, method='PUT')
+        self.trello_urlreq.urlopen.assert_called_with(self.trello_urlreq.Request())
+        self.assertEqual("I have invited bill@example.com to join *yourorg* in Trello!", response)
 
-    def test_006_cancel(self):
-        """Test begin adding a user to trello, then cancel."""
-
-    def test_007_slack_specific(self):
-        """Test some Slack specific behavior."""
+    def test_006_slack_and_cancel(self):
+        """Test Slack specific behavior by adding a user to trello, then canceling."""
 
 
 if __name__ == '__main__':
