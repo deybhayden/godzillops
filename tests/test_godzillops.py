@@ -87,8 +87,9 @@ class TestChat(unittest.TestCase):
 
         # == Trello Mocks ==
         self.trello_urlreq = Mock(name='urlreq')
+        self.trello_urlresp = MockUrllibResponse(status=200)
         self.trello_urlreq.urlopen.return_value = Mock(name='urlopen',
-                                                       __enter__=Mock(return_value=MockUrllibResponse(status=200)),
+                                                       __enter__=Mock(return_value=self.trello_urlresp),
                                                        __exit__=Mock(return_value=False))
         self.trello_patch = patch('godzillops.trello.urlreq', self.trello_urlreq)
         self.trello_patch.start()
@@ -104,21 +105,21 @@ class TestChat(unittest.TestCase):
     def test_000_chat_init_successful(self):
         self.assertEqual(self.chat.config.PLATFORM, 'text')
 
-    def test_000_respond_exception(self):
+    def test_001_respond_exception(self):
         """Test begin adding a user to trello, then cancel."""
         self.chat.determine_action = Mock(side_effect=ValueError('BOOM!'))
         (response,) = self.chat.respond('GZ, are you okay?')
         self.logging_mock.exception.assert_called_with("An error occurred responding to the user.")
         self.assertEqual("I... erm... what? Try again.", response)
 
-    def test_001_say_hello_gz(self):
+    def test_002_say_hello_gz(self):
         responses = self.chat.respond('Hi Godzilla!')
         for index, response in enumerate(responses):
             if not index:
                 # make sure he said hi back
                 self.assertIn(response.lower(), self.chat.chunker.greetings)
 
-    def test_002_gz_gif(self):
+    def test_003_gz_gif(self):
         self.gz_urlresp.content = b'{"data":[{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}}]}'
         responses = self.chat.respond('Gojira!')
         expected_responses = [partial(self.assertEqual, 'RAWR!'),
@@ -127,7 +128,7 @@ class TestChat(unittest.TestCase):
             expected_responses[index](response)
         self.gz_urlreq.urlopen.assert_called_with(self.chat.config.GZ_GIF_URL)
 
-    def test_003_create_google_account(self):
+    def test_004_create_google_account(self):
         """Create google account with a single Chat.respond call."""
         # Make sure that the username is available
         self.admin_service_mock.users().get(userKey='bill@example.com').execute = Mock(side_effect=HttpError(Response({'status': 404}),
@@ -145,7 +146,7 @@ class TestChat(unittest.TestCase):
         for index, response in enumerate(responses):
             expected_responses[index](response)
 
-    def test_004_create_google_account(self):
+    def test_005_create_google_account(self):
         """Create google account with a multiple Chat.respond calls.
 
         Also, the username is unavailable the first time.
@@ -179,7 +180,7 @@ class TestChat(unittest.TestCase):
         for index, response in enumerate(responses):
             expected_responses[index](response)
 
-    def test_005_invite_to_trello(self):
+    def test_006_invite_to_trello(self):
         """Test adding a user to trello."""
         (response,) = self.chat.respond('I need to add Bill Tester to Trello')
         self.assertEqual("What is Bill Tester's example.com email address?", response)
@@ -190,8 +191,20 @@ class TestChat(unittest.TestCase):
         self.trello_urlreq.urlopen.assert_called_with(self.trello_urlreq.Request())
         self.assertEqual("I have invited bill@example.com to join *yourorg* in Trello!", response)
 
-    def test_006_slack_and_cancel(self):
+    def test_007_invite_to_trello(self):
+        """Test adding a user to trello - but throw an exception causing it to fail."""
+        self.trello_urlresp.status = 404
+        (response,) = self.chat.respond('I need to add Bill Tester (bill@example.com) to Trello.')
+        self.assertIn("Huh, that didn't work", response)
+
+    def test_008_slack_and_cancel(self):
         """Test Slack specific behavior by adding a user to trello, then canceling."""
+        context = {'channel': 'D0UAFSE34', 'team': 'T01394VO3',
+                   'user': 'U0R320JN1', 'ts': '1461786771.000033'}
+        (response,) = self.chat.respond('Invite <mailto:bill@example.com|bill@example.com> to Trello', context)
+        self.assertEqual("What is the user's full name?", response)
+        (response,) = self.chat.respond('Nevermind.', context)
+        self.assertIn("Previous action canceled.", response)
 
 
 if __name__ == '__main__':
