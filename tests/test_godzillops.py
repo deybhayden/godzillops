@@ -131,7 +131,7 @@ class TestChat(unittest.TestCase):
         """Create google account with a single Chat.respond call."""
         # Make sure that the username is available
         self.admin_service_mock.users().get(userKey='bill@example.com').execute = Mock(side_effect=HttpError(Response({'status': 404}),
-                                                                                                            b'User does not exist.'))
+                                                                                                             b'User does not exist.'))
         # Set up proper gmail response
         self.gmail_service_mock.users().messages().send().execute = Mock(return_value={'id': '123456789'})
         responses = self.chat.respond('I need to create a google account for Bill Tester.'
@@ -166,7 +166,7 @@ class TestChat(unittest.TestCase):
             expected_responses[index](response)
         # Make sure that the username is available
         self.admin_service_mock.users().get(userKey='bill@example.com').execute = Mock(side_effect=HttpError(Response({'status': 404}),
-                                                                                                            b'User does not exist.'))
+                                                                                                             b'User does not exist.'))
         # Set up proper gmail response
         self.gmail_service_mock.users().messages().send().execute = Mock(return_value={'id': '123456789'})
         self.assertEqual(self.chat.action_state['text']['step'], 'username')

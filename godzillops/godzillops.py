@@ -168,7 +168,6 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 in_dict['person'] = False
                 iobs.append((word, tag, 'O'))
 
-
         return nltk.chunk.conlltags2tree(iobs)
 
     def _parse_job_title(self, in_dict, word, tag, lword):
@@ -489,7 +488,8 @@ class Chat(object):
                 responses = self.google_admin.create_user(given_name, family_name,
                                                           username, email, job_title,
                                                           kwargs.get('google_groups'))
-                for response in responses: yield response
+                for response in responses:
+                    yield response
                 yield "Google account creation complete! What's next?"
                 self._clear_action_state()
 
@@ -531,5 +531,5 @@ class Chat(object):
         yield 'RAWR!'
         with urlreq.urlopen(self.config.GZ_GIF_URL) as r:
             response = json.loads(r.read().decode('utf-8'))
-            rand_index = random.choice(range(0,24))
+            rand_index = random.choice(range(0, 24))
             yield response['data'][rand_index]['images']['downsized']['url']
