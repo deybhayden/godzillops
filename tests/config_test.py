@@ -27,3 +27,6 @@ GOOGLE_GROUPS = {
 TRELLO_ORG = 'yourorg'
 TRELLO_API_KEY = 'asdfasdfasdfasdfasdfasdfasdfasdf'
 TRELLO_TOKEN = 'asdfasdfasdfasdfasdfasdfasdfasdfasdfsadfasdfasdfasdfasdfasdfasdf'
+# === GITHUB ===
+GITHUB_ORG = 'yourorg'
+GITHUB_ACCESS_TOKEN = 'asdfasdfasdfasdfasdfasdfasdfasdfasdfsadfasdfasdfasdfasdfasdfasdf'

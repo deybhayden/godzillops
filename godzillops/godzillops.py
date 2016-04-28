@@ -30,6 +30,7 @@ from dateutil.tz import tzlocal
 
 from .google import GoogleAdmin
 from .trello import TrelloAdmin
+from .github import GitHubAdmin
 
 
 CACHE_DIR = os.path.join(tempfile.gettempdir(), 'godzillops')
@@ -46,7 +47,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
     create_actions = {'create', 'add', 'generate', 'make'}
     invite_actions = {'add', 'invite'}
     dev_titles = {'data', 'scientist', 'software', 'developer', 'engineer', 'coder', 'programmer'}
-    design_titles = {'content', 'creative', 'designer', 'ux'}
+    design_titles = {'content', 'creative', 'designer', 'ux', 'product', 'graphic'}
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo', 'howdy'}
     gz_aliases = {'godzillops', 'godzilla', 'zilla', 'gojira', 'gz'}
     cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
@@ -79,6 +80,9 @@ class GZChunker(nltk.chunk.ChunkParserI):
         elif action == 'invite_to_trello':
             in_dict['invite_action'] = True
             in_dict['invite_to_trello'] = True
+        elif action == 'invite_to_github':
+            in_dict['invite_action'] = True
+            in_dict['invite_to_github'] = True
 
         return in_dict
 
@@ -107,11 +111,11 @@ class GZChunker(nltk.chunk.ChunkParserI):
             lword = word.lower()
             # They said our name!
             if lword in self.gz_aliases:
-                iobs.append((word, tag, 'I-GODZILLA'))
+                iobs.append((word, tag, 'B-GODZILLA'))
             # They said hello!
             elif lword in self.greetings:
                 in_dict['greeting'] = True
-                iobs.append((word, tag, 'I-GREETING'))
+                iobs.append((word, tag, 'B-GREETING'))
             # Named Entity Recognition - Find People
             elif word in self.names or in_dict['person'] and (word[0].isupper() or tag.startswith('NP')):
                 if in_dict['person']:
@@ -127,7 +131,11 @@ class GZChunker(nltk.chunk.ChunkParserI):
                     # <mailto:hayden767@gmail.com|hayden767@gmail.com>
                     # Strip that before returning in parsed tree
                     lword = lword.split('|')[-1][:-1]
-                iobs.append((lword, 'NN', 'I-EMAIL'))
+                iobs.append((lword, 'NN', 'B-EMAIL'))
+            # Named Entity Recognition - Usernames
+            elif lword.startswith('@'):
+                # Chunk as a username and lose the @ symbol
+                iobs.append((lword[1:], tag, 'B-USERNAME'))
             # CREATE ACTIONS
             elif lword in self.create_actions and tag.startswith('VB'):
                 in_dict['create_action'] = True
@@ -137,7 +145,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 iobs.append((word, tag, 'O'))
             elif in_dict['create_action'] and lword == 'google':
                 in_dict['create_google_account'] = True
-                iobs.append((word, tag, 'I-CREATE_GOOGLE_ACCOUNT'))
+                iobs.append((word, tag, 'B-CREATE_GOOGLE_ACCOUNT'))
             elif in_dict['create_google_account'] and lword == 'title':
                 in_dict['check_for_title'] = True
                 in_dict['title'] = []
@@ -150,7 +158,10 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 iobs.append((word, tag, 'O'))
             elif in_dict['invite_action'] and lword == 'trello':
                 in_dict['invite_to_trello'] = True
-                iobs.append((word, tag, 'I-INVITE_TO_TRELLO'))
+                iobs.append((word, tag, 'B-INVITE_TO_TRELLO'))
+            elif in_dict['invite_action'] and lword == 'github':
+                in_dict['invite_to_github'] = True
+                iobs.append((word, tag, 'B-INVITE_TO_GITHUB'))
             # CANCEL ACTION
             elif lword in self.cancel_actions and not iobs:
                 got_something_to_cancel = False
@@ -161,7 +172,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 if got_something_to_cancel:
                     # Only recognize cancel action by itself, and return immediately
                     # when it is encountered
-                    iobs.append((word, tag, 'I-CANCEL'))
+                    iobs.append((word, tag, 'B-CANCEL'))
                     break
             # Just a word, tag it and move on
             else:
@@ -244,6 +255,8 @@ class Chat(object):
         self.trello_admin = TrelloAdmin(self.config.TRELLO_ORG,
                                         self.config.TRELLO_API_KEY,
                                         self.config.TRELLO_TOKEN)
+        self.github_admin = GitHubAdmin(self.config.GITHUB_ORG,
+                                        self.config.GITHUB_ACCESS_TOKEN)
 
         # Action state is a dictionary used for managing incomplete
         # actions - cases where Godzillops needs to clarify or ask for more
@@ -323,6 +336,11 @@ class Chat(object):
         if action == 'create_google_account' and action_state['step'] == 'username':
             # Short circuit subtree parsing and use all text as the given username
             kwargs['username'], _ = chunked_text.leaves()[0]
+            return action, kwargs
+        elif action == 'invite_to_github' and action_state['step'] == 'username':
+            # Short circuit subtree parsing and use all text as the given username
+            kwargs['usernames'], _ = chunked_text.leaves()
+            return action, kwargs
 
         # Used to store named entities
         entity_dict = defaultdict(list)
@@ -335,9 +353,9 @@ class Chat(object):
             elif label == 'GODZILLA' and not action:
                 # Return a gif if they didn't say anything but our name
                 action = 'gz_gif'
-            elif label in ('CREATE_GOOGLE_ACCOUNT', 'INVITE_TO_TRELLO'):
+            elif label.startswith(('CREATE_', 'INVITE_')):
                 action = label.lower()
-            elif label in ('EMAIL', 'PERSON'):
+            elif label in ('EMAIL', 'PERSON', 'USERNAME'):
                 entity_dict[label].append(' '.join(l[0] for l in subtree.leaves()))
             elif label in 'JOB_TITLE':
                 # Store Full title name, and decide Google Groups based on custom POS tags
@@ -366,6 +384,8 @@ class Chat(object):
                         kwargs[label.lower()] = entity_dict[label][0]
                 if entity_dict['GOOGLE_GROUPS']:
                     kwargs['google_groups'] = entity_dict['GOOGLE_GROUPS']
+            elif action in ('invite_to_github',):
+                kwargs['usernames'] = entity_dict.get('USERNAME', [])
 
         return action, kwargs
 
@@ -519,6 +539,28 @@ class Chat(object):
                 yield "I have invited {} to join *{}* in Trello!".format(email, self.trello_admin.trello_org)
             else:
                 yield "Huh, that didn't work, check out the logs?"
+            self._clear_action_state()
+
+    def invite_to_github(self, **kwargs):
+        """Invite a user to a GitHub organization
+
+        Args:
+            usernames (Optional[list]): List of GitHub usernames, if not passed, will prompt for it.
+        """
+        usernames = kwargs.get('usernames')
+
+        if not usernames:
+            self._set_action_state(action='invite_to_github',
+                                   kwargs=kwargs, step='username')
+            yield "What is the user's (or users') GitHub username(s)?"
+        else:
+            for username in usernames:
+                success = self.github_admin.invite_to_github(username)
+                if success:
+                    message = "I have invited `{}` to join *{}* in GitHub!"
+                else:
+                    message = "Huh, I couldn't add `{}` to *{}* in GitHub."
+                yield message.format(username, self.github_admin.github_org)
             self._clear_action_state()
 
     def greet(self, **kwargs):

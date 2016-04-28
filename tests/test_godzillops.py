@@ -7,7 +7,7 @@ test_godzillops
 
 Tests for `godzillops` module.
 """
-
+import json
 import os
 import shutil
 import sys
@@ -94,25 +94,37 @@ class TestChat(unittest.TestCase):
         self.trello_patch = patch('godzillops.trello.urlreq', self.trello_urlreq)
         self.trello_patch.start()
 
+        # == GitHub Mocks ==
+        self.github_urlreq = Mock(name='urlreq')
+        self.github_urlresp = MockUrllibResponse(status=200)
+        self.github_urlreq.urlopen.return_value = Mock(name='urlopen',
+                                                       __enter__=Mock(return_value=self.github_urlresp),
+                                                       __exit__=Mock(return_value=False))
+        self.github_patch = patch('godzillops.github.urlreq', self.github_urlreq)
+        self.github_patch.start()
+
         # Mocking & Patching all done, create a patched instance of our Chat class - sans Logging/API pieces
         self.chat = godzillops.Chat(config_test)
 
     def tearDown(self):
+        self.github_patch.stop()
         self.trello_patch.stop()
         self.google_patch.stop()
         self.gz_patch.stop()
 
     def test_000_chat_init_successful(self):
+        """Make sure we initialized the Chat class without exception."""
         self.assertEqual(self.chat.config.PLATFORM, 'text')
 
     def test_001_respond_exception(self):
-        """Test begin adding a user to trello, then cancel."""
+        """Test a determine_action exception mid-response."""
         self.chat.determine_action = Mock(side_effect=ValueError('BOOM!'))
         (response,) = self.chat.respond('GZ, are you okay?')
         self.logging_mock.exception.assert_called_with("An error occurred responding to the user.")
         self.assertEqual("I... erm... what? Try again.", response)
 
     def test_002_say_hello_gz(self):
+        """Test that GZ returns a greeting when greeted."""
         responses = self.chat.respond('Hi Godzilla!')
         for index, response in enumerate(responses):
             if not index:
@@ -120,6 +132,7 @@ class TestChat(unittest.TestCase):
                 self.assertIn(response.lower(), self.chat.chunker.greetings)
 
     def test_003_gz_gif(self):
+        """Test that GZ returns a random godzilla gif when only his name is mentioned."""
         self.gz_urlresp.content = b'{"data":[{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}}]}'
         responses = self.chat.respond('Gojira!')
         expected_responses = [partial(self.assertEqual, 'RAWR!'),
@@ -205,6 +218,16 @@ class TestChat(unittest.TestCase):
         self.assertEqual("What is the user's full name?", response)
         (response,) = self.chat.respond('Nevermind.', context)
         self.assertIn("Previous action canceled.", response)
+
+    def test_009_invite_to_github(self):
+        """Test inviting an email to our GitHub organization."""
+        (response,) = self.chat.respond('I need to add @billyt3st3r to Github')
+        members_url = self.chat.github_admin.github_api_url.format('orgs/yourorg/memberships/billyt3st3r')
+        data = json.dumps({'role': 'member'}).encode()
+        self.github_urlreq.Request.assert_called_with(url=members_url, data=data, method='PUT',
+                                                      headers={'Content-Type': 'application/json'})
+        self.github_urlreq.urlopen.assert_called_with(self.github_urlreq.Request())
+        self.assertEqual("I have invited `billyt3st3r` to join *yourorg* in GitHub!", response)
 
 
 if __name__ == '__main__':
