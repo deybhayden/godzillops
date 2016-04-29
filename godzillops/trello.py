@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """trello.py - Trello API methods
 
-The TrelloAdmin class serves as an interface to Trello APIs for adding
-users and to a organization's groupmanaging groups.
+The TrelloAdmin class serves as an interface to the Trello API for adding
+users and to a Trello  organization.
 
 Attributes:
 """
