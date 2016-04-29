@@ -221,6 +221,30 @@ class GZChunker(nltk.chunk.ChunkParserI):
 
         return (word, tag, 'O')
 
+# == END of GZChunker ===
+
+
+def requires_admin(fxn):
+    """Require admin privileges before executing a function
+
+    Using Chat.context (the first argument of the function - i.e. self), see
+    if the 'admin' key is set to True. If so, run the function.
+
+    Args:
+        fxn (function): The function being protected by the admin check.
+    Returns:
+        responses (generator): A generator of string responses from the executed function.
+            An empty tuple will be returned if permission is denied.
+    """
+    def wrapped_fxn(*args, **kwargs):
+        self = args[0]
+        if self.context['admin']:
+            logging.info('Admin access granted to user "{}"'.format(self.context['user']))
+            return fxn(*args, **kwargs)
+        else:
+            return ()
+    return wrapped_fxn
+
 
 class Chat(object):
     """Main class of the Godzillops chat bot.
@@ -302,13 +326,28 @@ class Chat(object):
         self.action_state[self.context['user']].update(action_state)
 
     def _set_context(self, context):
+        """Set the message context dictionary.
+
+        This context dict contains the username & timezone.
+
+        Args:
+            context (dict): Passed dictionary containing the message's context:
+                username, timezone, etc.
+        """
+        now = datetime.now(tzlocal())
         if context is None:
             self.context = {'user': 'text', 'admin': True,
-                            'tz': datetime.now(tzlocal()).tzname()}
+                            'tz': now.tzname(), 'tz_offset': 0}
         else:
-            # TODO: Mangle whatever this context object is into the
-            # expected format
+            for key in ('user', 'tz', 'tz_offset'):
+                if key not in context:
+                    raise ValueError('Invalid message context. A "{}" key is required.'.format(key))
             self.context = context
+            self.context['admin'] = self.context['user'] in self.config.ADMINS
+
+        # Use the time that the chat instance is running
+        # with for future date time math
+        self.context['gz_timestamp'] = now
 
     #
     # DETERMINE ACTION AND RESPOND
@@ -466,6 +505,7 @@ class Chat(object):
     #     else:
     #         self._clear_action_state()
 
+    @requires_admin
     def create_google_account(self, **kwargs):
         """Create a new Google user account
 
@@ -523,6 +563,7 @@ class Chat(object):
                 yield "Google account creation complete! What's next?"
                 self._clear_action_state()
 
+    @requires_admin
     def invite_to_trello(self, **kwargs):
         """Invite a user to a Trello organization
 
@@ -551,6 +592,7 @@ class Chat(object):
                 yield "Huh, that didn't work, check out the logs?"
             self._clear_action_state()
 
+    @requires_admin
     def invite_to_github(self, **kwargs):
         """Invite a user to a GitHub organization
 
@@ -586,3 +628,5 @@ class Chat(object):
             response = json.loads(r.read().decode('utf-8'))
             rand_index = random.choice(range(0, 24))
             yield response['data'][rand_index]['images']['downsized']['url']
+
+# == END of Chat ===

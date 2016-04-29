@@ -212,8 +212,11 @@ class TestChat(unittest.TestCase):
 
     def test_008_slack_and_cancel(self):
         """Test Slack specific behavior by adding a user to trello, then canceling."""
-        context = {'channel': 'D0UAFSE34', 'team': 'T01394VO3',
-                   'user': 'U0R320JN1', 'ts': '1461786771.000033'}
+        context = {'user': 'U01234567', 'tz': 'America/Chicago', 'tz_offset': -18000}
+        response = self.chat.respond('Invite <mailto:bill@example.com|bill@example.com> to Trello', context)
+        # No response since that fake user string isn't an admin in config_test.py
+        self.assertEqual(response, ())
+        context['user'] = 'text'
         (response,) = self.chat.respond('Invite <mailto:bill@example.com|bill@example.com> to Trello', context)
         self.assertEqual("What is the user's full name?", response)
         (response,) = self.chat.respond('Nevermind.', context)
@@ -258,6 +261,14 @@ class TestChat(unittest.TestCase):
         self.github_urlresp.status = 404
         (response,) = self.chat.respond('I need to add @billyt3st3r to Github.')
         self.assertIn("Huh, I couldn't add `billyt3st3r` to *yourorg* in GitHub", response)
+
+    def test_012_context_exception(self):
+        """Test responding to a borked context object"""
+        context = {'tz': 'America/Chicago', 'tz_offset': -18000}
+        (response,) = self.chat.respond('GZ, are you okay?', context)
+        self.logging_mock.exception.assert_called_with("An error occurred responding to the user.")
+        self.assertEqual("I... erm... what? Try again.", response)
+
 
 if __name__ == '__main__':
     import sys
