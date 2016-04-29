@@ -14,7 +14,7 @@ import sys
 import unittest
 import urllib.parse as urlparse
 from functools import partial
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, call
 
 from apiclient.errors import HttpError
 from httplib2 import Response
@@ -220,7 +220,7 @@ class TestChat(unittest.TestCase):
         self.assertIn("Previous action canceled.", response)
 
     def test_009_invite_to_github(self):
-        """Test inviting an email to our GitHub organization."""
+        """Test inviting a new user to our GitHub organization/team."""
         (response,) = self.chat.respond('I need to add @billyt3st3r to Github')
         members_url = self.chat.github_admin.github_api_url.format('teams/1234567/memberships/billyt3st3r')
         data = json.dumps({'role': 'member'}).encode()
@@ -229,6 +229,35 @@ class TestChat(unittest.TestCase):
         self.github_urlreq.urlopen.assert_called_with(self.github_urlreq.Request())
         self.assertEqual("I have invited `billyt3st3r` to join *yourorg* in GitHub!", response)
 
+    def test_010_invite_to_github(self):
+        """Test inviting 2 users to our GitHub organization/team, but don't say who at first."""
+        (response,) = self.chat.respond('I need to invite a couple people to join our Github.')
+        self.assertEqual("Please list the GitHub username(s) so I can send out an invite.", response)
+
+        usernames = ('billyt3st3r', 'suzzee_z')
+        responses = self.chat.respond(', '.join(usernames))
+
+        data = json.dumps({'role': 'member'}).encode()
+        expected_responses, urlreq_calls = [], []
+        for username in usernames:
+            expected_responses.append(partial(self.assertIn, "invited `{}` to join *yourorg* in GitHub".format(username)))
+            members_url = self.chat.github_admin.github_api_url.format('teams/1234567/memberships/'+username)
+            urlreq_calls.append(call(url=members_url, data=data, method='PUT',
+                                     headers={'Content-Type': 'application/json'}))
+
+
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
+
+        self.github_urlreq.Request.assert_has_calls(urlreq_calls)
+        self.github_urlreq.urlopen.assert_has_calls((call(self.github_urlreq.Request()),
+                                                     call(self.github_urlreq.Request())))
+
+    def test_011_invite_to_github(self):
+        """Test adding a user to github - but throw an exception causing it to fail."""
+        self.github_urlresp.status = 404
+        (response,) = self.chat.respond('I need to add @billyt3st3r to Github.')
+        self.assertIn("Huh, I couldn't add `billyt3st3r` to *yourorg* in GitHub", response)
 
 if __name__ == '__main__':
     import sys

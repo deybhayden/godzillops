@@ -335,12 +335,12 @@ class Chat(object):
         kwargs = action_state.get('kwargs', {})
 
         if action == 'create_google_account' and action_state['step'] == 'username':
-            # Short circuit subtree parsing and use all text as the given username
+            # Short circuit subtree parsing, and treat first leaf as a username
             kwargs['username'], _ = chunked_text.leaves()[0]
             return action, kwargs
         elif action == 'invite_to_github' and action_state['step'] == 'username':
-            # Short circuit subtree parsing and use all text as the given username
-            kwargs['usernames'], _ = chunked_text.leaves()
+            # Short circuit subtree parsing, and treat all leaves as usernames
+            kwargs['usernames'] = [u for u, _ in chunked_text.leaves()]
             return action, kwargs
 
         # Used to store named entities
@@ -408,16 +408,24 @@ class Chat(object):
         try:
             # Set current message context - Who are we talking too? Where are they at?
             self._set_context(context)
-            # Preprocess raw _input - Tokenize into tokens - split by space, punctuation but not on @ & #
-            tokens = self.tokenizer.tokenize(_input)
-            # Tag for POS using Brown corpus ClassifierBasedPOSTagger
-            tagged_text = self.tagger.tag(tokens)
             # Get current action state - if we are currently doing something for this user already.
             action_state = self._get_action_state()
+
+            # Tokenize raw _input
+            if action_state.get('regexp_tokenize'):
+                 # Use simple alphanumeric Regex - used in some actions
+                tokens = nltk.regexp_tokenize(_input, "[\w]+")
+            else:
+                # Use Twitter Tokenizer - split by space, punctuation but not on @ & #
+                tokens = self.tokenizer.tokenize(_input)
+
+            # Tag for POS using Brown corpus ClassifierBasedPOSTagger
+            tagged_text = self.tagger.tag(tokens)
             # Parse the text using GZChunker into actionable chunks
             chunked_text = self.chunker.parse(tagged_text, action_state)
             # Determine what the action should be, and prepare keyword args for the returned function
             action, kwargs = self.determine_action(chunked_text, action_state)
+
             if action is not None:
                 # If we should take action, execute the function with the kwargs
                 # now and return the results
@@ -499,7 +507,8 @@ class Chat(object):
 
             if not self.google_admin.is_username_available(username):
                 self._set_action_state(action='create_google_account',
-                                       kwargs=kwargs, step='username')
+                                       kwargs=kwargs, step='username',
+                                       regexp_tokenize=True)
                 suggestion = (given_name[0] + family_name).lower()
                 yield ("Aw nuts, that name is taken. "
                        "Might I suggest a nickname or something like {}? "
@@ -552,8 +561,9 @@ class Chat(object):
 
         if not usernames:
             self._set_action_state(action='invite_to_github',
-                                   kwargs=kwargs, step='username')
-            yield "What is the user's (or users') GitHub username(s)?"
+                                   kwargs=kwargs, step='username',
+                                   regexp_tokenize=True)
+            yield "Please list the GitHub username(s) so I can send out an invite."
         else:
             for username in usernames:
                 success = self.github_admin.invite_to_github(username)
