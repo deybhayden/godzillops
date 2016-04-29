@@ -30,3 +30,4 @@ TRELLO_TOKEN = 'asdfasdfasdfasdfasdfasdfasdfasdfasdfsadfasdfasdfasdfasdfasdfasdf
 # === GITHUB ===
 GITHUB_ORG = 'yourorg'
 GITHUB_ACCESS_TOKEN = 'asdfasdfasdfasdfasdfasdfasdfasdfasdfsadfasdfasdfasdfasdfasdfasdf'
+GITHUB_TEAM = 1234567

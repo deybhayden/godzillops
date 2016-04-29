@@ -222,7 +222,7 @@ class TestChat(unittest.TestCase):
     def test_009_invite_to_github(self):
         """Test inviting an email to our GitHub organization."""
         (response,) = self.chat.respond('I need to add @billyt3st3r to Github')
-        members_url = self.chat.github_admin.github_api_url.format('orgs/yourorg/memberships/billyt3st3r')
+        members_url = self.chat.github_admin.github_api_url.format('teams/1234567/memberships/billyt3st3r')
         data = json.dumps({'role': 'member'}).encode()
         self.github_urlreq.Request.assert_called_with(url=members_url, data=data, method='PUT',
                                                       headers={'Content-Type': 'application/json'})

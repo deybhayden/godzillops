@@ -256,7 +256,8 @@ class Chat(object):
                                         self.config.TRELLO_API_KEY,
                                         self.config.TRELLO_TOKEN)
         self.github_admin = GitHubAdmin(self.config.GITHUB_ORG,
-                                        self.config.GITHUB_ACCESS_TOKEN)
+                                        self.config.GITHUB_ACCESS_TOKEN,
+                                        self.config.GITHUB_TEAM)
 
         # Action state is a dictionary used for managing incomplete
         # actions - cases where Godzillops needs to clarify or ask for more
