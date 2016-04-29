@@ -46,7 +46,7 @@ clean-test:
 	rm -fr htmlcov/
 
 lint:
-	flake8 godzillops tests
+	flake8 --max-complexity=10 godzillops tests
 
 test:
 	python setup.py test
