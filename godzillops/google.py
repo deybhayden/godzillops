@@ -30,7 +30,8 @@ PASSWORD_LENGTH = 18
 SCOPES = ['https://www.googleapis.com/auth/admin.directory.domain.readonly',
           'https://www.googleapis.com/auth/admin.directory.user',
           'https://www.googleapis.com/auth/admin.directory.group',
-          'https://www.googleapis.com/auth/gmail.send']
+          'https://www.googleapis.com/auth/gmail.send',
+          'https://www.googleapis.com/auth/calendar']
 
 
 class GoogleAdmin(object):
@@ -39,7 +40,7 @@ class GoogleAdmin(object):
     This class takes a couple configuration pieces - service account keys & super admin account - and
     returns a class instance capable of doing basic google user management.
     """
-    def __init__(self, service_account_json, sub_account):
+    def __init__(self, service_account_json, sub_account, calendar_id):
         """Initialize Google API Service Interface
 
         Given a service account json object and super admin account email from Google Apps Domain,
@@ -48,13 +49,16 @@ class GoogleAdmin(object):
         Args:
             service_account_json (dict): Parsed JSON Key File for a Google Service Account
             sub_account (str): The super admin account to act on behalf of
+            calendar_id (str): The company calendar to add new users to as readers
         """
         credentials = ServiceAccountCredentials._from_parsed_json_keyfile(service_account_json, SCOPES)
         delegated_creds = credentials.create_delegated(sub_account)
         http = delegated_creds.authorize(Http())
         self.sub_account = sub_account
+        self.calendar_id = calendar_id
         self.admin_service = build('admin', 'directory_v1', http=http)
         self.gmail_service = build('gmail', 'v1', http=http)
+        self.cal_service = build('calendar', 'v3', http=http)
         self.primary_domain = self._get_primary_domain()
 
     def create_user(self, given_name, family_name, username, personal_email, job_title, groups):
@@ -93,6 +97,12 @@ class GoogleAdmin(object):
                                .insert(groupKey=group_key,
                                        body={'email': email,
                                              'role': 'MEMBER'})
+                               .execute())
+
+        logging.info("Adding {} to the '{}' calendar".format(email, self.calendar_id))
+        (self.cal_service.acl().insert(calendarId=self.calendar_id,
+                                       body={'role': 'reader',
+                                             'scope': {'type': 'user', 'value': email}})
                                .execute())
 
         yield 'Sending them a welcome email to their personal address with login credentials to the new account.'

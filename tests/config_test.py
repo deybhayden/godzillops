@@ -24,6 +24,7 @@ GOOGLE_GROUPS = {
     'GDES': ['design'],
     'GDEV': ['dev']
 }
+GOOGLE_CALENDAR_ID = 'cal-id@group.calendar.google.com'
 # === TRELLO ===
 TRELLO_ORG = 'yourorg'
 TRELLO_API_KEY = 'asdfasdfasdfasdfasdfasdfasdfasdf'

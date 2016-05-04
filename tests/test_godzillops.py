@@ -78,8 +78,10 @@ class TestChat(unittest.TestCase):
         self.admin_service_mock.domains().list(customer='my_customer').execute = Mock(return_value={'domains': [{'isPrimary': True, 'domainName': 'example.com'},
                                                                                                                 {'isPrimary:': False, 'domainName': 'example.org'}]})
         self.gmail_service_mock = Mock(name='gmail_service')
+        self.cal_service_mock = Mock(name='cal_service')
         self.apiclient_build_mock = apiclient_mock_creator({'admin': self.admin_service_mock,
-                                                            'gmail': self.gmail_service_mock})
+                                                            'gmail': self.gmail_service_mock,
+                                                            'calendar': self.cal_service_mock})
         self.google_patch = patch.multiple('godzillops.google',
                                            ServiceAccountCredentials=self.service_cred_mock,
                                            build=self.apiclient_build_mock)
@@ -158,6 +160,10 @@ class TestChat(unittest.TestCase):
                               partial(self.assertIn, 'Google account creation complete!')]
         for index, response in enumerate(responses):
             expected_responses[index](response)
+
+        self.cal_service_mock.acl().insert.assert_called_with(calendarId=self.chat.config.GOOGLE_CALENDAR_ID,
+                                                              body={'role': 'reader',
+                                                                    'scope': {'type': 'user', 'value': 'bill@example.com'}})
 
     def test_005_create_google_account(self):
         """Create google account with a multiple Chat.respond calls.
