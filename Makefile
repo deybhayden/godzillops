@@ -60,6 +60,10 @@ coverage:
 	coverage html
 	$(BROWSER) htmlcov/index.html
 
+coverage-codeship:
+	coverage run --source godzillops setup.py test
+	coverage report -m --fail-under 100
+
 docs:
 	rm -f docs/godzillops.rst
 	rm -f docs/modules.rst
@@ -82,3 +86,10 @@ dist: clean
 
 install: clean
 	python setup.py install
+	python -m nltk.downloader names brown
+
+install-codeship: install
+	pip install coverage
+
+install-dev: install
+	pip install --upgrade -r requirements_dev.txt
