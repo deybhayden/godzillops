@@ -174,10 +174,9 @@ class GoogleAdmin(object):
             self.admin_service.users().get(userKey=email).execute()
             # Executed without error, meaning this user already exists
             return False
-        except HttpError as error:
-            if error.resp.status == 404:
-                # Error was raised since the user isn't found, meaning it's available
-                return True
+        except HttpError:
+            # Error was raised since the user isn't found, meaning it's available
+            return True
 
     def _generate_password(self):
         """Generate a random password comprised of PASSWORD_LENGTH PASSWORD_CHARACTERS.
@@ -194,9 +193,8 @@ class GoogleAdmin(object):
         Returns:
             str: The primary domain of the google account.
         """
-        domain_obj = (self.admin_service.domains()
-                                        .list(customer='my_customer')
-                                        .execute())
-        for domain in domain_obj['domains']:
-            if domain['isPrimary']:
-                return domain['domainName']
+        domains = (self.admin_service.domains()
+                                     .list(customer='my_customer')
+                                     .execute())['domains']
+        (primary_domain,) = [d['domainName'] for d in domains if d['isPrimary']]
+        return primary_domain

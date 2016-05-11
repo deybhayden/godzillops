@@ -76,8 +76,8 @@ class TestChat(unittest.TestCase):
         # == Google Mocks ==
         self.service_cred_mock = Mock(name='ServiceAccountCredentials')
         self.admin_service_mock = Mock(name='admin_service')
-        self.admin_service_mock.domains().list(customer='my_customer').execute = Mock(return_value={'domains': [{'isPrimary': True, 'domainName': 'example.com'},
-                                                                                                                {'isPrimary:': False, 'domainName': 'example.org'}]})
+        self.admin_service_mock.domains().list(customer='my_customer').execute = Mock(return_value={'domains': [{'isPrimary': False, 'domainName': 'example.org'},
+                                                                                                                {'isPrimary': True, 'domainName': 'example.com'}]})
         self.gmail_service_mock = Mock(name='gmail_service')
         self.cal_service_mock = Mock(name='cal_service')
         self.apiclient_build_mock = apiclient_mock_creator({'admin': self.admin_service_mock,
@@ -141,6 +141,9 @@ class TestChat(unittest.TestCase):
                 self.assertIn(response.lower(), self.chat.chunker.greetings)
             else:
                 expected_responses[index](response)
+        # Test a no-action input - GZ returns nothing
+        response = self.chat.respond('Maybe?')
+        self.assertEqual(response, ())
 
     def test_003_gz_gif(self):
         """Test that GZ returns a random godzilla gif when only his name is mentioned."""

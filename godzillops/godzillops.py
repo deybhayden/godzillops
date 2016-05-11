@@ -163,17 +163,11 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 in_dict['invite_to_github'] = True
                 iobs.append((word, tag, 'B-INVITE_TO_GITHUB'))
             # CANCEL ACTION
-            elif lword in self.cancel_actions and not iobs:
-                got_something_to_cancel = False
-                for running_action in ('create_action', 'invite_action'):
-                    if in_dict[running_action]:
-                        got_something_to_cancel = True
-                        break
-                if got_something_to_cancel:
-                    # Only recognize cancel action by itself, and return immediately
-                    # when it is encountered
-                    iobs.append((word, tag, 'B-CANCEL'))
-                    break
+            elif lword in self.cancel_actions and (in_dict['create_action'] or in_dict['invite_action']) and not iobs:
+                # Only recognize cancel action by itself, and return immediately
+                # when it is encountered
+                iobs.append((word, tag, 'B-CANCEL'))
+                break
             # Just a word, tag it and move on
             else:
                 in_dict['person'] = False
@@ -329,25 +323,24 @@ class Chat(object):
             completed_dict (dict): A dictionary representing information about the completed action and
                 if it was successful or not.
         """
-        old_action_state = self.action_state.pop(self.context['user']['id'], None)
+        old_action_state = self.action_state.pop(self.context['user']['id'], {})
         completed_dict = {'admin_action_complete': action_success and admin_required and self.context['admin']}
 
         message = 'I have done nothing.'
-        if old_action_state:
-            completed_action = old_action_state.get('action')
-            if action_success:
-                message = 'At the bidding of my master ({}), '.format(self.context['user']['name'])
-                if completed_action == 'create_google_account':
-                    message += 'I have created a new Google Account for {person}.'.format(**old_action_state['kwargs'])
-                elif completed_action == 'invite_to_trello':
-                    message += 'I have invited {person} <{email}> to join our Trello organization.'.format(**old_action_state['kwargs'])
-                elif completed_action == 'invite_to_github':
-                    fmt_usernames = ', '.join(old_action_state['kwargs']['usernames'])
-                    message += 'I have invited {} to join our GitHub organization.'.format(fmt_usernames)
-                elif not admin_required:
-                    message = 'Command completed.'
+        completed_action = old_action_state.get('action')
+        if action_success:
+            message = 'At the bidding of my master ({}), '.format(self.context['user']['name'])
+            if completed_action == 'create_google_account':
+                message += 'I have created a new Google Account for {person}.'.format(**old_action_state['kwargs'])
+            elif completed_action == 'invite_to_trello':
+                message += 'I have invited {person} <{email}> to join our Trello organization.'.format(**old_action_state['kwargs'])
+            elif completed_action == 'invite_to_github':
+                fmt_usernames = ', '.join(old_action_state['kwargs']['usernames'])
+                message += 'I have invited {} to join our GitHub organization.'.format(fmt_usernames)
             else:
-                message = 'I have failed you.'
+                message = 'Command completed.'
+        else:
+            message = 'I have failed you.'
 
         completed_dict['message'] = message
         return completed_dict
@@ -551,7 +544,7 @@ class Chat(object):
             elif not email:
                 self._set_action_state(step='email')
                 yield "What is a personal email address for {}?".format(given_name)
-            elif not job_title:
+            else:
                 self._set_action_state(step='title')
                 yield "What is {}'s job title?".format(given_name)
         else:
@@ -591,7 +584,7 @@ class Chat(object):
             if not name:
                 self._set_action_state(step='name')
                 yield "What is the user's full name?"
-            elif not email or not email.endswith(self.google_admin.primary_domain):
+            else:
                 self._set_action_state(step='email')
                 yield "What is {}'s {} email address?".format(name, self.google_admin.primary_domain)
         else:
