@@ -239,7 +239,7 @@ def requires_admin(fxn):
     def wrapped_fxn(*args, **kwargs):
         self = args[0]
         if self.context['admin']:
-            logging.info('Admin access granted to user "{}"'.format(self.context['user']))
+            logging.info('Admin access granted to user "{}"'.format(self.context['user']['name']))
             return fxn(*args, **kwargs)
         else:
             return ()
@@ -316,15 +316,48 @@ class Chat(object):
     # actions over chat
     #
 
-    def _clear_action_state(self):
-        self.action_state[self.context['user']] = {}
+    def _clear_action_state(self, action_success, admin_required=False):
+        """Clear existing action state for the user.
+
+        The current action is stored in a user-keyed dictionary containing the action name and
+        accompanying kwargs. It is cleared upon the 'completion' of an action - successful or not.
+
+        Args:
+            action_success (bool): True if the action was successful, False otherwise
+            admin_required (bool): True if the action was an administrator action, False by default.
+        Returns:
+            completed_dict (dict): A dictionary representing information about the completed action and
+                if it was successful or not.
+        """
+        old_action_state = self.action_state.pop(self.context['user']['id'], None)
+        completed_dict = {'admin_action_complete': action_success and admin_required and self.context['admin']}
+
+        message = 'I have done nothing.'
+        if old_action_state:
+            completed_action = old_action_state.get('action')
+            if action_success:
+                message = 'At the bidding of my master ({}), '.format(self.context['user']['name'])
+                if completed_action == 'create_google_account':
+                    message += 'I have created a new Google Account for {person}.'.format(**old_action_state['kwargs'])
+                elif completed_action == 'invite_to_trello':
+                    message += 'I have invited {person} <{email}> to join our Trello organization.'.format(**old_action_state['kwargs'])
+                elif completed_action == 'invite_to_github':
+                    fmt_usernames = ', '.join(old_action_state['kwargs']['usernames'])
+                    message += 'I have invited {} to join our GitHub organization.'.format(fmt_usernames)
+                elif not admin_required:
+                    message = 'Command completed.'
+            else:
+                message = 'I have failed you.'
+
+        completed_dict['message'] = message
+        return completed_dict
 
     def _get_action_state(self):
-        return self.action_state.get(self.context['user'], {})
+        return self.action_state.get(self.context['user']['id'], {})
 
     def _set_action_state(self, **action_state):
-        self.action_state.setdefault(self.context['user'], {})
-        self.action_state[self.context['user']].update(action_state)
+        self.action_state.setdefault(self.context['user']['id'], {})
+        self.action_state[self.context['user']['id']].update(action_state)
 
     def _set_context(self, context):
         """Set the message context dictionary.
@@ -337,14 +370,14 @@ class Chat(object):
         """
         now = datetime.now(tzlocal())
         if context is None:
-            self.context = {'user': 'text', 'admin': True,
-                            'tz': now.tzname(), 'tz_offset': 0}
+            self.context = {'user': {'id': 'text', 'name': 'text',
+                                     'tz': now.tzname(), 'tz_offset': 0},
+                            'admin': True}
         else:
-            for key in ('user', 'tz', 'tz_offset'):
-                if key not in context:
-                    raise ValueError('Invalid message context. A "{}" key is required.'.format(key))
+            if 'user' not in context:
+                raise ValueError('Invalid message context. The "user" key is required.')
             self.context = context
-            self.context['admin'] = self.context['user'] in self.config.ADMINS
+            self.context['admin'] = self.context['user']['id'] in self.config.ADMINS
 
         # Use the time that the chat instance is running
         # with for future date time math
@@ -428,6 +461,9 @@ class Chat(object):
             elif action in ('invite_to_github',):
                 kwargs['usernames'] = entity_dict.get('USERNAME', [])
 
+        # Update current action state with determined course of action
+        self._set_action_state(action=action, kwargs=kwargs)
+
         return action, kwargs
 
     def respond(self, _input, context=None):
@@ -481,30 +517,8 @@ class Chat(object):
 
     def cancel(self, **kwargs):
         """Clear any current action state (cancel creating a google account, for example)."""
-        self._clear_action_state()
         yield "Previous action canceled. I didn't want to do it anyways."
-
-    # TODO: Figure out action chaining & confirmation
-    # def confirm(self, **kwargs):
-    #     """Confirm via Yes/No text if the next action in a chain of actions should be ran.
-
-    #     Args:
-    #         run_action (bool): If true, run the 'next_action' function, otherwise don't.
-    #         action_chain list[tuple]: A list of pairs, matching a message to prompt the user for confirmation and an action function to run.
-    #     """
-    #     run_action = kwargs.pop('run_action')
-    #     action_chain = kwargs.pop('action_chain')
-    #     if action_chain:
-    #         _, next_action = action_chain.pop()
-    #         if run_action:
-    #             for response in getattr(self, next_action)(**kwargs):
-    #                 yield response
-    #             kwargs['action_chain'] = action_chain
-    #             self._set_action_state(action='confirm',
-    #                                    kwargs=kwargs)
-    #             yield action_chain[0][0]
-    #     else:
-    #         self._clear_action_state()
+        yield self._clear_action_state(action_success=True)
 
     @requires_admin
     def create_google_account(self, **kwargs):
@@ -531,8 +545,6 @@ class Chat(object):
         all_good = given_name and family_name and email and job_title
 
         if not all_good:
-            self._set_action_state(action='create_google_account',
-                                   kwargs=kwargs)
             if not (given_name and family_name):
                 self._set_action_state(step='name')
                 yield "What is the employee's full name (first & last)?"
@@ -547,8 +559,7 @@ class Chat(object):
             yield "Okay, let me check if '{}' is an available Google username.".format(username)
 
             if not self.google_admin.is_username_available(username):
-                self._set_action_state(action='create_google_account',
-                                       kwargs=kwargs, step='username',
+                self._set_action_state(step='username',
                                        regexp_tokenize=True)
                 suggestion = (given_name[0] + family_name).lower()
                 yield ("Aw nuts, that name is taken. "
@@ -562,7 +573,7 @@ class Chat(object):
                 for response in responses:
                     yield response
                 yield "Google account creation complete! What's next?"
-                self._clear_action_state()
+                yield self._clear_action_state(action_success=True, admin_required=True)
 
     @requires_admin
     def invite_to_trello(self, **kwargs):
@@ -577,8 +588,6 @@ class Chat(object):
         all_good = name and email
 
         if not all_good:
-            self._set_action_state(action='invite_to_trello',
-                                   kwargs=kwargs)
             if not name:
                 self._set_action_state(step='name')
                 yield "What is the user's full name?"
@@ -591,7 +600,7 @@ class Chat(object):
                 yield "I have invited {} to join *{}* in Trello!".format(email, self.trello_admin.trello_org)
             else:
                 yield "Huh, that didn't work, check out the logs?"
-            self._clear_action_state()
+            yield self._clear_action_state(success, admin_required=True)
 
     @requires_admin
     def invite_to_github(self, **kwargs):
@@ -603,9 +612,7 @@ class Chat(object):
         usernames = kwargs.get('usernames')
 
         if not usernames:
-            self._set_action_state(action='invite_to_github',
-                                   kwargs=kwargs, step='username',
-                                   regexp_tokenize=True)
+            self._set_action_state(step='username', regexp_tokenize=True)
             yield "Please list the GitHub username(s) so I can send out an invite."
         else:
             for username in usernames:
@@ -615,12 +622,13 @@ class Chat(object):
                 else:
                     message = "Huh, I couldn't add `{}` to *{}* in GitHub."
                 yield message.format(username, self.github_admin.github_org)
-            self._clear_action_state()
+            yield self._clear_action_state(success, admin_required=True)
 
     def greet(self, **kwargs):
         """Say Hello back in response to a greeting from the user."""
         yield random.choice(list(self.chunker.greetings)).title()
         yield 'Can I help you with anything?'
+        yield self._clear_action_state(action_success=True)
 
     def gz_gif(self, **kwargs):
         """Return a random Godzilla GIF."""
@@ -629,5 +637,6 @@ class Chat(object):
             response = json.loads(r.read().decode('utf-8'))
             rand_index = random.choice(range(0, 24))
             yield response['data'][rand_index]['images']['downsized']['url']
+        yield self._clear_action_state(action_success=True)
 
 # == END of Chat ===

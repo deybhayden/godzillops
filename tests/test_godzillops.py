@@ -20,7 +20,8 @@ from apiclient.errors import HttpError
 from httplib2 import Response
 from godzillops import godzillops
 
-sys.path.append(os.path.dirname(__file__))
+TEST_DIR = os.path.dirname(__file__)
+sys.path.append(TEST_DIR)
 import config_test
 
 
@@ -114,6 +115,10 @@ class TestChat(unittest.TestCase):
         self.google_patch.stop()
         self.gz_patch.stop()
 
+    def _clear_action_state_assert(self, success, msg):
+        return partial(self.assertEqual, {'admin_action_complete': success,
+                                          'message': msg})
+
     def test_000_chat_init_successful(self):
         """Make sure we initialized the Chat class without exception."""
         self.assertEqual(self.chat.config.PLATFORM, 'text')
@@ -128,17 +133,23 @@ class TestChat(unittest.TestCase):
     def test_002_say_hello_gz(self):
         """Test that GZ returns a greeting when greeted."""
         responses = self.chat.respond('Hi Godzilla!')
+        expected_responses = [None,
+                              partial(self.assertEqual, "Can I help you with anything?"),
+                              self._clear_action_state_assert(False, "Command completed.")]
         for index, response in enumerate(responses):
             if not index:
-                # make sure he said hi back
                 self.assertIn(response.lower(), self.chat.chunker.greetings)
+            else:
+                expected_responses[index](response)
 
     def test_003_gz_gif(self):
         """Test that GZ returns a random godzilla gif when only his name is mentioned."""
-        self.gz_urlresp.content = b'{"data":[{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}},{"images":{"downsized":{"url": "giphy.com"}}}]}'
+        with open(os.path.join(TEST_DIR, 'giphy.json'), 'rb') as giphy_json:
+            self.gz_urlresp.content = giphy_json.read()
         responses = self.chat.respond('Gojira!')
         expected_responses = [partial(self.assertEqual, 'RAWR!'),
-                              partial(self.assertIn, 'giphy.com')]
+                              partial(self.assertIn, 'giphy.com'),
+                              self._clear_action_state_assert(False, "Command completed.")]
         for index, response in enumerate(responses):
             expected_responses[index](response)
         self.gz_urlreq.urlopen.assert_called_with(self.chat.config.GZ_GIF_URL)
@@ -157,7 +168,8 @@ class TestChat(unittest.TestCase):
                               partial(self.assertIn, 'good to go'),
                               partial(self.assertIn, 'groups now: *dev*'),
                               partial(self.assertIn, 'Sending them a welcome email'),
-                              partial(self.assertIn, 'Google account creation complete!')]
+                              partial(self.assertIn, 'Google account creation complete!'),
+                              self._clear_action_state_assert(True, "At the bidding of my master (text), I have created a new Google Account for Bill Tester.")]
         for index, response in enumerate(responses):
             expected_responses[index](response)
 
@@ -195,7 +207,8 @@ class TestChat(unittest.TestCase):
                               partial(self.assertIn, 'good to go'),
                               partial(self.assertIn, 'groups now: *design*'),
                               partial(self.assertIn, 'Sending them a welcome email'),
-                              partial(self.assertIn, 'Google account creation complete!')]
+                              partial(self.assertIn, 'Google account creation complete!'),
+                              self._clear_action_state_assert(True, "At the bidding of my master (text), I have created a new Google Account for Bill Tester.")]
         for index, response in enumerate(responses):
             expected_responses[index](response)
 
@@ -203,40 +216,55 @@ class TestChat(unittest.TestCase):
         """Test adding a user to trello."""
         (response,) = self.chat.respond('I need to add Bill Tester to Trello')
         self.assertEqual("What is Bill Tester's example.com email address?", response)
-        (response,) = self.chat.respond('bill@example.com')
+        responses = self.chat.respond('bill@example.com')
+        expected_responses = [partial(self.assertEqual, "I have invited bill@example.com to join *yourorg* in Trello!"),
+                              self._clear_action_state_assert(True, "At the bidding of my master (text), I have invited Bill Tester <bill@example.com> to join our Trello organization.")]
+
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
+
         members_url = self.chat.trello_admin.trello_api_url.format('organizations/yourorg/members')
         data = urlparse.urlencode({'email': 'bill@example.com', 'fullName': 'Bill Tester'}).encode()
         self.trello_urlreq.Request.assert_called_with(url=members_url, data=data, method='PUT')
         self.trello_urlreq.urlopen.assert_called_with(self.trello_urlreq.Request())
-        self.assertEqual("I have invited bill@example.com to join *yourorg* in Trello!", response)
 
     def test_007_invite_to_trello(self):
         """Test adding a user to trello - but throw an exception causing it to fail."""
         self.trello_urlresp.status = 404
-        (response,) = self.chat.respond('I need to add Bill Tester (bill@example.com) to Trello.')
-        self.assertIn("Huh, that didn't work", response)
+        responses = self.chat.respond('I need to add Bill Tester (bill@example.com) to Trello.')
+        expected_responses = [partial(self.assertIn, "Huh, that didn't work"),
+                              self._clear_action_state_assert(False, "I have failed you.")]
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
 
     def test_008_slack_and_cancel(self):
         """Test Slack specific behavior by adding a user to trello, then canceling."""
-        context = {'user': 'U01234567', 'tz': 'America/Chicago', 'tz_offset': -18000}
+        context = {'user': {'id': 'U01234567', 'name': 'ben', 'tz': 'America/Chicago', 'tz_offset': -18000}}
         response = self.chat.respond('Invite <mailto:bill@example.com|bill@example.com> to Trello', context)
         # No response since that fake user string isn't an admin in config_test.py
         self.assertEqual(response, ())
-        context['user'] = 'text'
+        context['user']['id'] = 'text'
         (response,) = self.chat.respond('Invite <mailto:bill@example.com|bill@example.com> to Trello', context)
         self.assertEqual("What is the user's full name?", response)
-        (response,) = self.chat.respond('Nevermind.', context)
-        self.assertIn("Previous action canceled.", response)
+        responses = self.chat.respond('Nevermind.', context)
+        expected_responses = [partial(self.assertIn, "Previous action canceled."),
+                              self._clear_action_state_assert(False, "Command completed.")]
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
 
     def test_009_invite_to_github(self):
         """Test inviting a new user to our GitHub organization/team."""
-        (response,) = self.chat.respond('I need to add @billyt3st3r to Github')
+        responses = self.chat.respond('I need to add @billyt3st3r to Github')
+        expected_responses = [partial(self.assertEqual, "I have invited `billyt3st3r` to join *yourorg* in GitHub!"),
+                              self._clear_action_state_assert(True, "At the bidding of my master (text), I have invited billyt3st3r to join our GitHub organization.")]
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
+
         members_url = self.chat.github_admin.github_api_url.format('teams/1234567/memberships/billyt3st3r')
         data = json.dumps({'role': 'member'}).encode()
         self.github_urlreq.Request.assert_called_with(url=members_url, data=data, method='PUT',
                                                       headers={'Content-Type': 'application/json'})
         self.github_urlreq.urlopen.assert_called_with(self.github_urlreq.Request())
-        self.assertEqual("I have invited `billyt3st3r` to join *yourorg* in GitHub!", response)
 
     def test_010_invite_to_github(self):
         """Test inviting 2 users to our GitHub organization/team, but don't say who at first."""
@@ -253,7 +281,7 @@ class TestChat(unittest.TestCase):
             members_url = self.chat.github_admin.github_api_url.format('teams/1234567/memberships/'+username)
             urlreq_calls.append(call(url=members_url, data=data, method='PUT',
                                      headers={'Content-Type': 'application/json'}))
-
+        expected_responses.append(self._clear_action_state_assert(True, "At the bidding of my master (text), I have invited billyt3st3r, suzzee_z to join our GitHub organization."))
 
         for index, response in enumerate(responses):
             expected_responses[index](response)
@@ -265,12 +293,15 @@ class TestChat(unittest.TestCase):
     def test_011_invite_to_github(self):
         """Test adding a user to github - but throw an exception causing it to fail."""
         self.github_urlresp.status = 404
-        (response,) = self.chat.respond('I need to add @billyt3st3r to Github.')
-        self.assertIn("Huh, I couldn't add `billyt3st3r` to *yourorg* in GitHub", response)
+        responses = self.chat.respond('I need to add @billyt3st3r to Github.')
+        expected_responses = [partial(self.assertIn, "Huh, I couldn't add `billyt3st3r` to *yourorg* in GitHub"),
+                              self._clear_action_state_assert(False, "I have failed you.")]
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
 
     def test_012_context_exception(self):
         """Test responding to a borked context object"""
-        context = {'tz': 'America/Chicago', 'tz_offset': -18000}
+        context = {}
         (response,) = self.chat.respond('GZ, are you okay?', context)
         self.logging_mock.exception.assert_called_with("An error occurred responding to the user.")
         self.assertEqual("I... erm... what? Try again.", response)
