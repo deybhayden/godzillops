@@ -10,6 +10,7 @@ webbrowser.open("file://" + pathname2url(os.path.abspath(sys.argv[1])))
 endef
 export BROWSER_PYSCRIPT
 BROWSER := python -c "$$BROWSER_PYSCRIPT"
+PYTHON3 ?= /usr/local/bin/python3
 
 help:
 	@echo "clean - remove all build, test, coverage and Python artifacts"
@@ -86,7 +87,7 @@ dist: clean
 	ls -l dist
 
 install: clean
-	virtualenv --python /usr/local/bin/python3 .venv
+	virtualenv --python $(PYTHON3) .venv
 	. .venv/bin/activate && \
 	python setup.py install && \
 	python -m nltk.downloader names brown
