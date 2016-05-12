@@ -55,20 +55,20 @@ test:
 
 coverage:
 	. .venv/bin/activate && \
-	coverage run --branch --source godzillops setup.py test
-	coverage report -m
-	coverage html
+	coverage run --branch --source godzillops setup.py test && \
+	coverage report -m && \
+	coverage html && \
 	$(BROWSER) htmlcov/index.html
 
 coverage-codeship:
 	. .venv/bin/activate && \
-	coverage run --branch --source godzillops setup.py test
+	coverage run --branch --source godzillops setup.py test && \
 	coverage report -m --fail-under 100
 
 docs:
-	. .venv/bin/activate && \
 	rm -f docs/godzillops.rst
 	rm -f docs/modules.rst
+	. .venv/bin/activate && \
 	sphinx-apidoc -o docs/ godzillops
 	$(MAKE) -C docs clean
 	$(MAKE) -C docs html
@@ -78,11 +78,13 @@ servedocs: docs
 	watchmedo shell-command -p '*.rst' -c '$(MAKE) -C docs html' -R -D .
 
 release: clean
-	python setup.py sdist upload
+	. .venv/bin/activate && \
+	python setup.py sdist upload && \
 	python setup.py bdist_wheel upload
 
 dist: clean
-	python setup.py sdist
+	. .venv/bin/activate && \
+	python setup.py sdist && \
 	python setup.py bdist_wheel
 	ls -l dist
 
