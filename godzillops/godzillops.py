@@ -49,7 +49,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
     dev_titles = {'data', 'scientist', 'software', 'developer', 'engineer', 'coder', 'programmer'}
     design_titles = {'content', 'creative', 'designer', 'ux', 'product', 'graphic'}
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo', 'howdy'}
-    gz_aliases = {'godzillops', 'godzilla', 'zilla', 'gojira', 'gz'}
+    gz_aliases = {'godzillops', 'godzilla', 'gojira', 'gz'}
     cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
     yes = {'yes', 'yeah', 'yep', 'yup', 'sure'}
     no = {'no', 'nope', 'nah'}
@@ -482,7 +482,7 @@ class Chat(object):
 
             # Tokenize raw _input
             if action_state.get('regexp_tokenize'):
-                 # Use simple alphanumeric Regex - used in some actions
+                # Use simple alphanumeric Regex - used in some actions
                 tokens = nltk.regexp_tokenize(_input, "[\w]+")
             else:
                 # Use Twitter Tokenizer - split by space, punctuation but not on @ & #

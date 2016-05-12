@@ -27,6 +27,7 @@ help:
 clean: clean-build clean-pyc clean-test
 
 clean-build:
+	rm -fr .venv
 	rm -fr build/
 	rm -fr dist/
 	rm -fr .eggs/
@@ -44,22 +45,27 @@ clean-test:
 	rm -fr htmlcov/
 
 lint:
+	. .venv/bin/activate && \
 	flake8 --max-complexity=10 godzillops tests
 
 test:
+	. .venv/bin/activate && \
 	python setup.py test
 
 coverage:
+	. .venv/bin/activate && \
 	coverage run --branch --source godzillops setup.py test
 	coverage report -m
 	coverage html
 	$(BROWSER) htmlcov/index.html
 
 coverage-codeship:
+	. .venv/bin/activate && \
 	coverage run --branch --source godzillops setup.py test
 	coverage report -m --fail-under 100
 
 docs:
+	. .venv/bin/activate && \
 	rm -f docs/godzillops.rst
 	rm -f docs/modules.rst
 	sphinx-apidoc -o docs/ godzillops
@@ -80,11 +86,15 @@ dist: clean
 	ls -l dist
 
 install: clean
-	python setup.py install
+	virtualenv --python /usr/local/bin/python3 .venv
+	. .venv/bin/activate && \
+	python setup.py install && \
 	python -m nltk.downloader names brown
 
 install-codeship: install
+	. .venv/bin/activate && \
 	pip install coverage
 
 install-dev: install
+	. .venv/bin/activate && \
 	pip install --upgrade -r requirements_dev.txt
