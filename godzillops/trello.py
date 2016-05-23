@@ -3,8 +3,6 @@
 
 The TrelloAdmin class serves as an interface to the Trello API for adding
 users and to a Trello  organization.
-
-Attributes:
 """
 import logging
 import urllib.parse as urlparse
@@ -14,7 +12,7 @@ import urllib.request as urlreq
 class TrelloAdmin(object):
     """TrelloAdmin class is a simple interface in front of Trello's HTTP API
 
-    This class takes a couple configuation pieces - api key & token - and
+    This class takes a couple configuration pieces - api key & token - and
     returns a class instance capable of doing basic trello member management.
     """
     def __init__(self, trello_org, trello_api_key, trello_token):

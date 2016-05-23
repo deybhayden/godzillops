@@ -31,6 +31,7 @@ from dateutil.tz import tzlocal
 from .google import GoogleAdmin
 from .trello import TrelloAdmin
 from .github import GitHubAdmin
+from .abacus import AbacusAdmin
 
 
 CACHE_DIR = os.path.join(tempfile.gettempdir(), 'godzillops')
@@ -70,19 +71,16 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 how to chunk the tagged sentence into meaningful pieces.
         """
         in_dict = defaultdict(bool)
-        action = action_state.get('action')
+        action = action_state.get('action', '')
 
         if action == 'create_google_account':
             in_dict['create_action'] = True
             in_dict['create_google_account'] = True
             if action_state['step'] == 'title':
                 in_dict['check_for_title'] = True
-        elif action == 'invite_to_trello':
+        elif action.startswith('invite_to'):
             in_dict['invite_action'] = True
-            in_dict['invite_to_trello'] = True
-        elif action == 'invite_to_github':
-            in_dict['invite_action'] = True
-            in_dict['invite_to_github'] = True
+            in_dict[action] = True
 
         return in_dict
 
@@ -162,6 +160,9 @@ class GZChunker(nltk.chunk.ChunkParserI):
             elif in_dict['invite_action'] and lword == 'github':
                 in_dict['invite_to_github'] = True
                 iobs.append((word, tag, 'B-INVITE_TO_GITHUB'))
+            elif in_dict['invite_action'] and lword == 'abacus':
+                in_dict['invite_to_abacus'] = True
+                iobs.append((word, tag, 'B-INVITE_TO_ABACUS'))
             # CANCEL ACTION
             elif lword in self.cancel_actions and (in_dict['create_action'] or in_dict['invite_action']) and not iobs:
                 # Only recognize cancel action by itself, and return immediately
@@ -277,6 +278,7 @@ class Chat(object):
         self.github_admin = GitHubAdmin(self.config.GITHUB_ORG,
                                         self.config.GITHUB_ACCESS_TOKEN,
                                         self.config.GITHUB_TEAM)
+        self.abacus_admin = AbacusAdmin(self.config.ABACUS_ZAPIER_WEBHOOK)
 
         # Action state is a dictionary used for managing incomplete
         # actions - cases where Godzillops needs to clarify or ask for more
@@ -337,6 +339,8 @@ class Chat(object):
             elif completed_action == 'invite_to_github':
                 fmt_usernames = ', '.join(old_action_state['kwargs']['usernames'])
                 message += 'I have invited {} to join our GitHub organization.'.format(fmt_usernames)
+            elif completed_action == 'invite_to_abacus':
+                message += 'I have invited <{email}> to join our Abacus organization.'.format(**old_action_state['kwargs'])
             else:
                 message = 'Command completed.'
         else:
@@ -445,7 +449,7 @@ class Chat(object):
 
         if action != 'cancel':
             # Prepare New Kwarg Values for selected action
-            if action in ('create_google_account', 'invite_to_trello'):
+            if action in ('create_google_account', 'invite_to_trello', 'invite_to_abacus'):
                 for label in ('JOB_TITLE', 'PERSON', 'EMAIL'):
                     if entity_dict[label]:
                         kwargs[label.lower()] = entity_dict[label][0]
@@ -574,7 +578,7 @@ class Chat(object):
 
         Args:
             person (Optional[str]): Name of user, if not passed, will prompt for it.
-            email (Optional[str]): Google apps address, if not passed, will prompt for it.
+            email (Optional[str]): Email address, if not passed, will prompt for it.
         """
         name = kwargs.get('person')
         email = kwargs.get('email')
@@ -615,6 +619,26 @@ class Chat(object):
                 else:
                     message = "Huh, I couldn't add `{}` to *{}* in GitHub."
                 yield message.format(username, self.github_admin.github_org)
+            yield self._clear_action_state(success, admin_required=True)
+
+    @requires_admin
+    def invite_to_abacus(self, **kwargs):
+        """Invite a user to a Abacus organization
+
+        Args:
+            email (Optional[str]): Email address, if not passed, will prompt for it.
+        """
+        email = kwargs.get('email')
+
+        if not email:
+            self._set_action_state(step='email')
+            yield "What is the new user's {} email address?".format(self.google_admin.primary_domain)
+        else:
+            success = self.abacus_admin.invite_to_abacus(email)
+            if success:
+                yield "I have invited {} to join Abacus!".format(email)
+            else:
+                yield "Huh, that didn't work, check out the logs?"
             yield self._clear_action_state(success, admin_required=True)
 
     def greet(self, **kwargs):

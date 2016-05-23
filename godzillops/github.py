@@ -3,8 +3,6 @@
 
 The GitHubAdmin class serves as an interface to GitHub APIs. Right now it
 is used for inviting users to a specified organization.
-
-Attributes:
 """
 import json
 import logging
@@ -14,7 +12,7 @@ import urllib.request as urlreq
 class GitHubAdmin(object):
     """GitHubAdmin class is a simple interface in front of GitHub's HTTP API
 
-    This class takes a couple configuation pieces - api key & token - and
+    This class takes a couple configuration pieces - api key & token - and
     returns a class instance capable of doing basic github member management.
     """
     def __init__(self, github_org, github_access_token, github_team):

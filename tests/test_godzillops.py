@@ -22,7 +22,6 @@ from godzillops import godzillops
 
 TEST_DIR = os.path.dirname(__file__)
 sys.path.append(TEST_DIR)
-import config_test
 
 
 def apiclient_mock_creator(mocks):
@@ -106,7 +105,17 @@ class TestChat(unittest.TestCase):
         self.github_patch = patch('godzillops.github.urlreq', self.github_urlreq)
         self.github_patch.start()
 
+        # == Abacus Mocks ==
+        self.abacus_urlreq = Mock(name='urlreq')
+        self.abacus_urlresp = MockUrllibResponse(status=200)
+        self.abacus_urlreq.urlopen.return_value = Mock(name='urlopen',
+                                                       __enter__=Mock(return_value=self.abacus_urlresp),
+                                                       __exit__=Mock(return_value=False))
+        self.abacus_patch = patch('godzillops.abacus.urlreq', self.abacus_urlreq)
+        self.abacus_patch.start()
+
         # Mocking & Patching all done, create a patched instance of our Chat class - sans Logging/API pieces
+        import config_test
         self.chat = godzillops.Chat(config_test)
 
     def tearDown(self):
@@ -281,7 +290,7 @@ class TestChat(unittest.TestCase):
         expected_responses, urlreq_calls = [], []
         for username in usernames:
             expected_responses.append(partial(self.assertIn, "invited `{}` to join *yourorg* in GitHub".format(username)))
-            members_url = self.chat.github_admin.github_api_url.format('teams/1234567/memberships/'+username)
+            members_url = self.chat.github_admin.github_api_url.format('teams/1234567/memberships/' + username)
             urlreq_calls.append(call(url=members_url, data=data, method='PUT',
                                      headers={'Content-Type': 'application/json'}))
         expected_responses.append(self._clear_action_state_assert(True, "At the bidding of my master (text), I have invited billyt3st3r, suzzee_z to join our GitHub organization."))
@@ -308,6 +317,32 @@ class TestChat(unittest.TestCase):
         (response,) = self.chat.respond('GZ, are you okay?', context)
         self.logging_mock.exception.assert_called_with("An error occurred responding to the user.")
         self.assertEqual("I... erm... what? Try again.", response)
+
+    def test_013_invite_to_abacus(self):
+        """Test adding a user to abacus."""
+        (response,) = self.chat.respond('I need to invite someone to Abacus')
+        self.assertEqual("What is the new user's example.com email address?", response)
+        responses = self.chat.respond('bill@example.com')
+        expected_responses = [partial(self.assertEqual, "I have invited bill@example.com to join Abacus!"),
+                              self._clear_action_state_assert(True, "At the bidding of my master (text), I have invited <bill@example.com> to join our Abacus organization.")]
+
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
+
+        data = json.dumps({'email': 'bill@example.com'}).encode()
+        self.abacus_urlreq.Request.assert_called_with(url=self.chat.config.ABACUS_ZAPIER_WEBHOOK,
+                                                      data=data, method='POST',
+                                                      headers={'Content-Type': 'application/json'})
+        self.abacus_urlreq.urlopen.assert_called_with(self.abacus_urlreq.Request())
+
+    def test_014_invite_to_abacus(self):
+        """Test adding a user to abacus - but throw an exception causing it to fail."""
+        self.abacus_urlresp.status = 404
+        responses = self.chat.respond('I need to add Bill Tester (bill@example.com) to Abacus.')
+        expected_responses = [partial(self.assertIn, "Huh, that didn't work"),
+                              self._clear_action_state_assert(False, "I have failed you.")]
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
 
 
 if __name__ == '__main__':
