@@ -22,7 +22,8 @@ GOOGLE_SERVICE_ACCOUNT_JSON = {
 GOOGLE_SUPER_ADMIN = 'admin@example.com'
 GOOGLE_GROUPS = {
     'GDES': ['design'],
-    'GDEV': ['dev']
+    'GDEV': ['dev'],
+    'GMUL': ['multimedia']
 }
 GOOGLE_CALENDAR_ID = 'cal-id@group.calendar.google.com'
 # === TRELLO ===

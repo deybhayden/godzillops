@@ -5,6 +5,7 @@ The GoogleAdmin class serves as an interface to Google APIs for interacting
 with Google Admin SDK for creating users and managing groups.
 
 Attributes:
+    GOOGLE_GROUP_TAGS (tuple[str]): List of supported google group POS tags
     PASSWORD_CHARACTERS (str): All possible password characters used in generating
         random user passwords.
     PASSWORD_LENGTH (int): The default generated password length.
@@ -24,7 +25,7 @@ from apiclient.discovery import build
 from httplib2 import Http
 from oauth2client.service_account import ServiceAccountCredentials
 
-
+GOOGLE_GROUP_TAGS = ('GDEV', 'GDES', 'GMUL')
 PASSWORD_CHARACTERS = string.ascii_letters + string.punctuation + string.digits
 PASSWORD_LENGTH = 18
 SCOPES = ['https://www.googleapis.com/auth/admin.directory.domain.readonly',

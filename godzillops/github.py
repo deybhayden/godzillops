@@ -27,7 +27,7 @@ class GitHubAdmin(object):
             github_team (int): This integer is the github team id that we are going to invite a user to.
         """
         self.github_org = github_org
-        self.github_api_url = "https://api.github.com/{0}?access_token="+github_access_token
+        self.github_api_url = "https://api.github.com/{0}?access_token=" + github_access_token
         self.github_team = github_team
 
     def invite_to_github(self, username):

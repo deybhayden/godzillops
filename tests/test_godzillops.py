@@ -128,6 +128,37 @@ class TestChat(unittest.TestCase):
         return partial(self.assertEqual, {'admin_action_complete': success,
                                           'message': msg})
 
+    def _create_google_account_aux(self, title, groups_to_check):
+        (response,) = self.chat.respond('I need to create a new google account.')
+        self.assertEqual("What is the employee's full name (first & last)?", response)
+        self.assertEqual(self.chat.action_state['text']['action'], 'create_google_account')
+        (response,) = self.chat.respond('Bill')
+        self.assertEqual("What is the employee's full name (first & last)?", response)
+        (response,) = self.chat.respond('Bill Tester')
+        self.assertEqual("What is a personal email address for Bill?", response)
+        (response,) = self.chat.respond('bill@yahoo.com')
+        self.assertEqual("What is Bill's job title?", response)
+        responses = self.chat.respond(title)
+        expected_responses = [partial(self.assertIn, "'bill' is an available Google username."),
+                              partial(self.assertIn, 'Aw nuts, that name is taken. Might I suggest a nickname or something like btester')]
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
+        # Make sure that the username is available
+        self.admin_service_mock.users().get(userKey='bill@example.com').execute = Mock(side_effect=HttpError(Response({'status': 404}),
+                                                                                                             b'User does not exist.'))
+        # Set up proper gmail response
+        self.gmail_service_mock.users().messages().send().execute = Mock(return_value={'id': '123456789'})
+        self.assertEqual(self.chat.action_state['text']['step'], 'username')
+        responses = self.chat.respond('btester')
+        expected_responses = [partial(self.assertIn, "'btester' is an available Google username."),
+                              partial(self.assertIn, 'good to go'),
+                              partial(self.assertIn, 'groups now: *{}*'.format(', '.join(groups_to_check))),
+                              partial(self.assertIn, 'Sending them a welcome email'),
+                              partial(self.assertIn, 'Google account creation complete!'),
+                              self._clear_action_state_assert(True, "At the bidding of my master (text), I have created a new Google Account for Bill Tester.")]
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
+
     def test_000_chat_init_successful(self):
         """Make sure we initialized the Chat class without exception."""
         self.assertEqual(self.chat.config.PLATFORM, 'text')
@@ -190,41 +221,20 @@ class TestChat(unittest.TestCase):
                                                                     'scope': {'type': 'user', 'value': 'bill@example.com'}})
 
     def test_005_create_google_account(self):
-        """Create google account with a multiple Chat.respond calls.
+        """Create Designer-type google account with a multiple Chat.respond calls.
 
         Also, the username is unavailable the first time.
         """
-        (response,) = self.chat.respond('I need to create a new google account.')
-        self.assertEqual("What is the employee's full name (first & last)?", response)
-        self.assertEqual(self.chat.action_state['text']['action'], 'create_google_account')
-        (response,) = self.chat.respond('Bill')
-        self.assertEqual("What is the employee's full name (first & last)?", response)
-        (response,) = self.chat.respond('Bill Tester')
-        self.assertEqual("What is a personal email address for Bill?", response)
-        (response,) = self.chat.respond('bill@yahoo.com')
-        self.assertEqual("What is Bill's job title?", response)
-        responses = self.chat.respond('UX Designer')
-        expected_responses = [partial(self.assertIn, "'bill' is an available Google username."),
-                              partial(self.assertIn, 'Aw nuts, that name is taken. Might I suggest a nickname or something like btester')]
-        for index, response in enumerate(responses):
-            expected_responses[index](response)
-        # Make sure that the username is available
-        self.admin_service_mock.users().get(userKey='bill@example.com').execute = Mock(side_effect=HttpError(Response({'status': 404}),
-                                                                                                             b'User does not exist.'))
-        # Set up proper gmail response
-        self.gmail_service_mock.users().messages().send().execute = Mock(return_value={'id': '123456789'})
-        self.assertEqual(self.chat.action_state['text']['step'], 'username')
-        responses = self.chat.respond('btester')
-        expected_responses = [partial(self.assertIn, "'btester' is an available Google username."),
-                              partial(self.assertIn, 'good to go'),
-                              partial(self.assertIn, 'groups now: *design*'),
-                              partial(self.assertIn, 'Sending them a welcome email'),
-                              partial(self.assertIn, 'Google account creation complete!'),
-                              self._clear_action_state_assert(True, "At the bidding of my master (text), I have created a new Google Account for Bill Tester.")]
-        for index, response in enumerate(responses):
-            expected_responses[index](response)
+        self._create_google_account_aux('UX Designer', ['design'])
 
-    def test_006_invite_to_trello(self):
+    def test_006_create_google_account(self):
+        """Create Multimedia-based google account with a multiple Chat.respond calls.
+
+        Also, the username is unavailable the first time.
+        """
+        self._create_google_account_aux('Content Creative', ['multimedia'])
+
+    def test_007_invite_to_trello(self):
         """Test adding a user to trello."""
         (response,) = self.chat.respond('I need to add Bill Tester to Trello')
         self.assertEqual("What is Bill Tester's example.com email address?", response)
@@ -240,7 +250,7 @@ class TestChat(unittest.TestCase):
         self.trello_urlreq.Request.assert_called_with(url=members_url, data=data, method='PUT')
         self.trello_urlreq.urlopen.assert_called_with(self.trello_urlreq.Request())
 
-    def test_007_invite_to_trello(self):
+    def test_008_invite_to_trello(self):
         """Test adding a user to trello - but throw an exception causing it to fail."""
         self.trello_urlresp.status = 404
         responses = self.chat.respond('I need to add Bill Tester (bill@example.com) to Trello.')
@@ -249,7 +259,7 @@ class TestChat(unittest.TestCase):
         for index, response in enumerate(responses):
             expected_responses[index](response)
 
-    def test_008_slack_and_cancel(self):
+    def test_009_slack_and_cancel(self):
         """Test Slack specific behavior by adding a user to trello, then canceling."""
         context = {'user': {'id': 'U01234567', 'name': 'ben', 'tz': 'America/Chicago', 'tz_offset': -18000}}
         response = self.chat.respond('Invite <mailto:bill@example.com|bill@example.com> to Trello', context)
@@ -264,7 +274,7 @@ class TestChat(unittest.TestCase):
         for index, response in enumerate(responses):
             expected_responses[index](response)
 
-    def test_009_invite_to_github(self):
+    def test_0010_invite_to_github(self):
         """Test inviting a new user to our GitHub organization/team."""
         responses = self.chat.respond('I need to add @billyt3st3r to Github')
         expected_responses = [partial(self.assertEqual, "I have invited `billyt3st3r` to join *yourorg* in GitHub!"),
@@ -278,7 +288,7 @@ class TestChat(unittest.TestCase):
                                                       headers={'Content-Type': 'application/json'})
         self.github_urlreq.urlopen.assert_called_with(self.github_urlreq.Request())
 
-    def test_010_invite_to_github(self):
+    def test_011_invite_to_github(self):
         """Test inviting 2 users to our GitHub organization/team, but don't say who at first."""
         (response,) = self.chat.respond('I need to invite a couple people to join our Github.')
         self.assertEqual("Please list the GitHub username(s) so I can send out an invite.", response)
@@ -302,7 +312,7 @@ class TestChat(unittest.TestCase):
         self.github_urlreq.urlopen.assert_has_calls((call(self.github_urlreq.Request()),
                                                      call(self.github_urlreq.Request())))
 
-    def test_011_invite_to_github(self):
+    def test_012_invite_to_github(self):
         """Test adding a user to github - but throw an exception causing it to fail."""
         self.github_urlresp.status = 404
         responses = self.chat.respond('I need to add @billyt3st3r to Github.')
@@ -311,14 +321,14 @@ class TestChat(unittest.TestCase):
         for index, response in enumerate(responses):
             expected_responses[index](response)
 
-    def test_012_context_exception(self):
+    def test_013_context_exception(self):
         """Test responding to a borked context object"""
         context = {}
         (response,) = self.chat.respond('GZ, are you okay?', context)
         self.logging_mock.exception.assert_called_with("An error occurred responding to the user.")
         self.assertEqual("I... erm... what? Try again.", response)
 
-    def test_013_invite_to_abacus(self):
+    def test_014_invite_to_abacus(self):
         """Test adding a user to abacus."""
         (response,) = self.chat.respond('I need to invite someone to Abacus')
         self.assertEqual("What is the new user's example.com email address?", response)
@@ -335,7 +345,7 @@ class TestChat(unittest.TestCase):
                                                       headers={'Content-Type': 'application/json'})
         self.abacus_urlreq.urlopen.assert_called_with(self.abacus_urlreq.Request())
 
-    def test_014_invite_to_abacus(self):
+    def test_015_invite_to_abacus(self):
         """Test adding a user to abacus - but throw an exception causing it to fail."""
         self.abacus_urlresp.status = 404
         responses = self.chat.respond('I need to add Bill Tester (bill@example.com) to Abacus.')
@@ -343,7 +353,6 @@ class TestChat(unittest.TestCase):
                               self._clear_action_state_assert(False, "I have failed you.")]
         for index, response in enumerate(responses):
             expected_responses[index](response)
-
 
 if __name__ == '__main__':
     import sys

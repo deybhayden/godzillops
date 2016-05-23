@@ -28,7 +28,7 @@ from nltk.tokenize import TweetTokenizer
 
 from dateutil.tz import tzlocal
 
-from .google import GoogleAdmin
+from .google import GOOGLE_GROUP_TAGS, GoogleAdmin
 from .trello import TrelloAdmin
 from .github import GitHubAdmin
 from .abacus import AbacusAdmin
@@ -48,7 +48,8 @@ class GZChunker(nltk.chunk.ChunkParserI):
     create_actions = {'create', 'add', 'generate', 'make'}
     invite_actions = {'add', 'invite'}
     dev_titles = {'data', 'scientist', 'software', 'developer', 'engineer', 'coder', 'programmer'}
-    design_titles = {'content', 'creative', 'designer', 'ux', 'product', 'graphic'}
+    design_titles = {'designer', 'ux', 'product', 'graphic'}
+    multimedia_titles = {'content', 'creative'}
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo', 'howdy'}
     gz_aliases = {'godzillops', 'godzilla', 'gojira', 'gz'}
     cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
@@ -192,17 +193,21 @@ class GZChunker(nltk.chunk.ChunkParserI):
         """
         probably_dev = lword in self.dev_titles
         probably_design = lword in self.design_titles
+        probably_multimedia = lword in self.multimedia_titles
 
         # Use POS to capture possible google grouping
         if probably_dev:
             job_title_tag = 'GDEV'
         elif probably_design:
             job_title_tag = 'GDES'
+        elif probably_multimedia:
+            job_title_tag = 'GMUL'
         else:
             job_title_tag = 'NP'
 
         probably_job_title = any([probably_dev,
                                   probably_design,
+                                  probably_multimedia,
                                   tag.startswith('NP')])
 
         if probably_job_title and in_dict['finding_title']:
@@ -434,13 +439,13 @@ class Chat(object):
                 group_check = defaultdict(bool)
                 for l in subtree.leaves():
                     job_title.append(l[0])
-                    group_check['GDEV'] = l[1] == 'GDEV'
-                    group_check['GDES'] = l[1] == 'GDES'
+                    for gtag in GOOGLE_GROUP_TAGS:
+                        group_check[gtag] = l[1] == gtag
                 entity_dict[label].append(' '.join(job_title))
 
-                # Rather sure on google groups to add user to
-                # since all title pieces were categorizable by dev or design title corpus
-                for glabel in ('GDES', 'GDEV'):
+                # Rather sure on google groups to add user to since all title
+                # pieces were categorizable by dev, design, or multimedia title corpus
+                for glabel in GOOGLE_GROUP_TAGS:
                     if group_check[glabel]:
                         entity_dict['GOOGLE_GROUPS'] += self.config.GOOGLE_GROUPS[glabel]
             elif label == 'CANCEL' and action_state['action']:
