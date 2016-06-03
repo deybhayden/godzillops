@@ -72,7 +72,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 how to chunk the tagged sentence into meaningful pieces.
         """
         in_dict = defaultdict(bool)
-        action = action_state.get('action', '')
+        action = action_state.get('action') or ''
 
         if action == 'create_google_account':
             in_dict['create_action'] = True
