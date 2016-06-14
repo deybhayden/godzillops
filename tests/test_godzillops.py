@@ -355,5 +355,4 @@ class TestChat(unittest.TestCase):
             expected_responses[index](response)
 
 if __name__ == '__main__':
-    import sys
     sys.exit(unittest.main())
