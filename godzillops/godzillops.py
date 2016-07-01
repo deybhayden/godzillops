@@ -22,19 +22,15 @@ from collections import defaultdict
 from datetime import datetime
 
 import nltk
-from nltk.corpus import names, brown
+from dateutil.tz import tzlocal
+from nltk.corpus import brown, names
 from nltk.tag.sequential import ClassifierBasedPOSTagger
 from nltk.tokenize import TweetTokenizer
 
-from dateutil.tz import tzlocal
-
+from .abacus import AbacusAdmin
+from .github import GitHubAdmin
 from .google import GOOGLE_GROUP_TAGS, GoogleAdmin
 from .trello import TrelloAdmin
-from .github import GitHubAdmin
-from .abacus import AbacusAdmin
-
-
-CACHE_DIR = os.path.join(tempfile.gettempdir(), 'godzillops')
 
 
 class GZChunker(nltk.chunk.ChunkParserI):
@@ -296,21 +292,18 @@ class Chat(object):
         It uses the brown corpus since it is included in it's entirety (as opposed to Penn Treebank).
         Meaning, Godzillops uses Brown POS tags - run nltk.help.brown_tagset() for descriptions
         of each POS tag.
-        """
-        if not os.path.exists(CACHE_DIR):
-            os.mkdir(CACHE_DIR)
 
-        tagger_path = os.path.join(CACHE_DIR, 'tagger.pickle')
-        # Check to see if a trained tagger is already cached, if so, use it
-        if os.path.exists(tagger_path):
-            with open(tagger_path, 'rb') as tagger_pickle:
-                self.tagger = pickle.load(tagger_pickle)
-                logging.debug("Tagger loaded from cache: '{}'".format(tagger_path))
-        else:
-            self.tagger = ClassifierBasedPOSTagger(train=brown.tagged_sents())
-            with open(tagger_path, 'wb') as tagger_pickle:
-                pickle.dump(self.tagger, tagger_pickle)
-                logging.debug("Tagger placed in cache: '{}'".format(tagger_path))
+        The tagger is read from a pickle for performance reasons. To generate the tagger from scratch,
+        you would run:
+
+        self.tagger = ClassifierBasedPOSTagger(train=brown.tagged_sents())
+        with open('tagger.pickle', 'wb') as tagger_pickle:
+            pickle.dump(self.tagger, tagger_pickle)
+        """
+        tagger_path = os.path.join(os.path.dirname(__file__), 'tagger.pickle')
+        with open(tagger_path, 'rb') as tagger_pickle:
+            self.tagger = pickle.load(tagger_pickle)
+            logging.debug("tagger.pickle loaded from cache")
 
     #
     # ACTION STATE HELPERS - used to manager per user action states - or continued

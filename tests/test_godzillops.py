@@ -43,16 +43,6 @@ class MockUrllibResponse(object):
 
 class TestChat(unittest.TestCase):
 
-    @classmethod
-    def setUpClass(cls):
-        if not os.environ.get('KEEP_GZ_CACHE'):
-            # Unless told not to via the KEEP_GZ_CACHE environment variable,
-            # make sure we start with a new ClassifierBasedPOSTagger.
-            # Removing the CACHE_DIR makes sure that subsequent tests
-            # (after the first one) will pull the pickled tagger from the cache,
-            # giving us coverage with/without the tagger being cached.
-            shutil.rmtree(godzillops.CACHE_DIR, ignore_errors=True)
-
     def setUp(self):
         """setUp runs before every test is executed.
 

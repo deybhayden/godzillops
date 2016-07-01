@@ -37,6 +37,8 @@ setup(
     ],
     package_dir={'godzillops':
                  'godzillops'},
+    package_data={'godzillops':
+                 ['tagger.pickle']},
     include_package_data=True,
     install_requires=requirements,
     #license="ISCL",

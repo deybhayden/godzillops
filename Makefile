@@ -12,6 +12,18 @@ export BROWSER_PYSCRIPT
 BROWSER := python -c "$$BROWSER_PYSCRIPT"
 PYTHON3 ?= /usr/local/bin/python3
 
+ifeq ($(OS),Windows_NT)
+	CREATE_ENV := virtualenv env
+    RM := "rm" -rf
+    FIND := "C:\Program Files\Git\usr\bin\find.exe"
+	ENV := env\Scripts\\
+else
+	CREATE_ENV := virtualenv --python $(PYTHON3) env
+    ENV := env/bin/
+	RM := rm -rf
+	FIND := find
+endif
+
 help:
 	@echo "clean - remove all build, test, coverage and Python artifacts"
 	@echo "clean-build - remove build artifacts"
@@ -24,52 +36,48 @@ help:
 	@echo "release - package and upload a release"
 	@echo "dist - package"
 	@echo "install - install the package to the active Python's site-packages"
+	@echo "install-dev - install the package to the active Python's site-packages plus debug tools for local development"
 
 clean: clean-build clean-pyc clean-test
 
 clean-build:
-	rm -fr .venv
-	rm -fr build/
-	rm -fr dist/
-	rm -fr .eggs/
-	find . -name '*.egg-info' -exec rm -fr {} +
-	find . -name '*.egg' -exec rm -fr {} +
+	$(RM) env
+	$(RM) build
+	$(RM) dist
+	$(RM) .eggs
+	$(FIND) . -name '*.egg-info' -exec rm -fr {} +
+	$(FIND) . -name '*.egg' -exec rm -fr {} +
 
 clean-pyc:
-	find . -name '*.pyc' -exec rm -f {} +
-	find . -name '*.pyo' -exec rm -f {} +
-	find . -name '*~' -exec rm -f {} +
-	find . -name '__pycache__' -exec rm -fr {} +
+	$(FIND) . -name '*.pyc' -exec rm -f {} +
+	$(FIND) . -name '*.pyo' -exec rm -f {} +
+	$(FIND) . -name '*~' -exec rm -f {} +
+	$(FIND) . -name '__pycache__' -exec rm -fr {} +
 
 clean-test:
-	rm -f .coverage
-	rm -fr htmlcov/
+	$(RM) .coverage
+	$(RM) htmlcov
 
 lint:
-	. .venv/bin/activate && \
-	flake8 --max-complexity=10 godzillops tests
+	$(ENV)flake8 --max-complexity=10 godzillops tests
 
 test:
-	. .venv/bin/activate && \
-	python setup.py test
+	$(ENV)python setup.py test
 
 coverage:
-	. .venv/bin/activate && \
-	coverage run --branch --source godzillops setup.py test && \
-	coverage report -m && \
-	coverage html && \
+	$(ENV)coverage run --branch --source godzillops setup.py test
+	$(ENV)coverage report -m
+	$(ENV)coverage html
 	$(BROWSER) htmlcov/index.html
 
 coverage-codeship:
-	. .venv/bin/activate && \
-	coverage run --branch --source godzillops setup.py test && \
-	coverage report -m --fail-under 100
+	$(ENV)coverage run --branch --source godzillops setup.py test
+	$(ENV)coverage report -m --fail-under 100
 
 docs:
-	rm -f docs/godzillops.rst
-	rm -f docs/modules.rst
-	. .venv/bin/activate && \
-	sphinx-apidoc -o docs/ godzillops
+	$(RM) godzillops.rst
+	$(RM) docs/modules.rst
+	$(ENV)sphinx-apidoc -o docs godzillops
 	$(MAKE) -C docs clean
 	$(MAKE) -C docs html
 	$(BROWSER) docs/_build/html/index.html
@@ -78,26 +86,21 @@ servedocs: docs
 	watchmedo shell-command -p '*.rst' -c '$(MAKE) -C docs html' -R -D .
 
 release: clean
-	. .venv/bin/activate && \
-	python setup.py sdist upload && \
-	python setup.py bdist_wheel upload
+	$(ENV)python setup.py sdist upload
+	$(ENV)python setup.py bdist_wheel upload
 
 dist: clean
-	. .venv/bin/activate && \
-	python setup.py sdist && \
-	python setup.py bdist_wheel
+	$(ENV)python setup.py sdist
+	$(ENV)python setup.py bdist_wheel
 	ls -l dist
 
 install: clean
-	virtualenv --python $(PYTHON3) .venv
-	. .venv/bin/activate && \
-	python setup.py install && \
-	python -m nltk.downloader names brown
+	$(CREATE_ENV)
+	$(ENV)python setup.py install
+	$(ENV)python -m nltk.downloader names brown
 
 install-codeship: install
-	. .venv/bin/activate && \
-	pip install coverage
+	$(ENV)pip install coverage
 
 install-dev: install
-	. .venv/bin/activate && \
-	pip install --upgrade -r requirements_dev.txt
+	$(ENV)pip install --upgrade -r requirements_dev.txt
