@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Current File",
+            "type": "python",
+            "request": "launch",
+            "stopOnEntry": true,
+            "program": "${file}",
+            "pythonPath": "${workspaceRoot}/env/bin/python",
+            "externalConsole": false,
+            "debugOptions": [
+                "WaitOnAbnormalExit",
+                "WaitOnNormalExit",
+                "RedirectOutput"
+            ]
+        }
+    ]
+}
