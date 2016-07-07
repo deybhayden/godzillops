@@ -16,15 +16,13 @@ import os
 import pickle
 import random
 import re
-import tempfile
 import urllib.request as urlreq
 from collections import defaultdict
 from datetime import datetime
 
 import nltk
 from dateutil.tz import tzlocal
-from nltk.corpus import brown, names
-from nltk.tag.sequential import ClassifierBasedPOSTagger
+from nltk.corpus import names
 from nltk.tokenize import TweetTokenizer
 
 from .abacus import AbacusAdmin
@@ -51,7 +49,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
     cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
     yes = {'yes', 'yeah', 'yep', 'yup', 'sure'}
     no = {'no', 'nope', 'nah'}
-    email_regexp = re.compile('[^@]+@[^@]+\.[^@]+', re.IGNORECASE)
+    email_regexp = re.compile(r'[^@]+@[^@]+\.[^@]+', re.IGNORECASE)
 
     def __init__(self):
         """Initialize the GZChunker class and any members that need to be created at runtime."""
@@ -235,7 +233,7 @@ def requires_admin(fxn):
     def wrapped_fxn(*args, **kwargs):
         self = args[0]
         if self.context['admin']:
-            logging.info('Admin access granted to user "{}"'.format(self.context['user']['name']))
+            logging.info('Admin access granted to user "%s"', self.context['user']['name'])
             return fxn(*args, **kwargs)
         else:
             return ()
@@ -296,9 +294,14 @@ class Chat(object):
         The tagger is read from a pickle for performance reasons. To generate the tagger from scratch,
         you would run:
 
-        self.tagger = ClassifierBasedPOSTagger(train=brown.tagged_sents())
-        with open('tagger.pickle', 'wb') as tagger_pickle:
-            pickle.dump(self.tagger, tagger_pickle)
+        .. highlight::
+        
+            from nltk.corpus import brown
+            from nltk.tag.sequential import ClassifierBasedPOSTagger
+            
+            self.tagger = ClassifierBasedPOSTagger(train=brown.tagged_sents())
+            with open('tagger.pickle', 'wb') as tagger_pickle:
+                pickle.dump(self.tagger, tagger_pickle)
         """
         tagger_path = os.path.join(os.path.dirname(__file__), 'tagger.pickle')
         with open(tagger_path, 'rb') as tagger_pickle:
@@ -485,7 +488,7 @@ class Chat(object):
             # Tokenize raw _input
             if action_state.get('regexp_tokenize'):
                 # Use simple alphanumeric Regex - used in some actions
-                tokens = nltk.regexp_tokenize(_input, "[\w]+")
+                tokens = nltk.regexp_tokenize(_input, r"[\w]+")
             else:
                 # Use Twitter Tokenizer - split by space, punctuation but not on @ & #
                 tokens = self.tokenizer.tokenize(_input)
