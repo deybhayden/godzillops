@@ -29,7 +29,7 @@ help:
 	@echo "clean-build - remove build artifacts"
 	@echo "clean-pyc - remove Python file artifacts"
 	@echo "clean-test - remove test and coverage artifacts"
-	@echo "lint - check style with flake8"
+	@echo "lint - check style with pylint"
 	@echo "test - run tests quickly with the default Python"
 	@echo "coverage - check code coverage quickly with the default Python"
 	@echo "docs - generate Sphinx HTML documentation, including API docs"
@@ -59,7 +59,7 @@ clean-test:
 	$(RM) htmlcov
 
 lint:
-	$(ENV)flake8 --max-complexity=10 godzillops tests
+	$(ENV)pylint godzillops tests
 
 test:
 	$(ENV)python setup.py test
