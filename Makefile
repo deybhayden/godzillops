@@ -1,4 +1,3 @@
-.PHONY: clean-pyc clean-build docs clean
 define BROWSER_PYSCRIPT
 import os, webbrowser, sys
 try:
@@ -14,15 +13,17 @@ PYTHON3 ?= /usr/local/bin/python3
 
 ifeq ($(OS),Windows_NT)
 	CREATE_ENV := virtualenv env
-    RM := "rm" -rf
-    FIND := "C:\Program Files\Git\usr\bin\find.exe"
+	RM := "rm" -rf
+	FIND := "C:\Program Files\Git\usr\bin\find.exe"
 	ENV := env\Scripts\\
 else
 	CREATE_ENV := virtualenv --python $(PYTHON3) env
-    ENV := env/bin/
+	ENV := env/bin/
 	RM := rm -rf
 	FIND := find
 endif
+
+.PHONY: clean-pyc clean-build docs clean
 
 help:
 	@echo "clean - remove all build, test, coverage and Python artifacts"
