@@ -55,6 +55,8 @@ class GZChunker(nltk.chunk.ChunkParserI):
         """Initialize the GZChunker class and any members that need to be created at runtime."""
         # Create a set of names from the NLTK names corpus - used for PERSON recognition
         self.names = set(names.words())
+        # Unique first names that need to be supported as well
+        self.names.add('Tres')
 
     def _generate_in_dict(self, action_state):
         """Use previous action state to default in_dict
