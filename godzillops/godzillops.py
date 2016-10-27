@@ -43,7 +43,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
     invite_actions = {'add', 'invite'}
     dev_titles = {'data', 'scientist', 'software', 'developer', 'engineer', 'coder', 'programmer'}
     design_titles = {'designer', 'ux', 'product', 'graphic'}
-    multimedia_titles = {'content', 'creative'}
+    creative_titles = {'content', 'creative'}
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo', 'howdy'}
     gz_aliases = {'godzillops', 'godzilla', 'gojira', 'gz'}
     cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
@@ -51,8 +51,14 @@ class GZChunker(nltk.chunk.ChunkParserI):
     no = {'no', 'nope', 'nah'}
     email_regexp = re.compile(r'[^@]+@[^@]+\.[^@]+', re.IGNORECASE)
 
-    def __init__(self):
-        """Initialize the GZChunker class and any members that need to be created at runtime."""
+    def __init__(self, config):
+        """Initialize the GZChunker class and any members that need to be created at runtime.
+
+        Args:
+            config (module): Python module storing configuration variables and secrets.
+                Used to authenticate API services and connect data stores.
+        """
+        self.config = config
         # Create a set of names from the NLTK names corpus - used for PERSON recognition
         self.names = set(names.words())
         # Unique first names that need to be supported as well
@@ -75,6 +81,8 @@ class GZChunker(nltk.chunk.ChunkParserI):
             in_dict['create_google_account'] = True
             if action_state['step'] == 'title':
                 in_dict['check_for_title'] = True
+            elif action_state['step'] == 'dev_role':
+                in_dict['check_for_dev_role'] = True
         elif action.startswith('invite_to'):
             in_dict['invite_action'] = True
             in_dict[action] = True
@@ -147,6 +155,8 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 iobs.append((word, tag, 'O'))
             elif in_dict['check_for_title']:
                 iobs.append(self._parse_job_title(in_dict, word, tag, lword))
+            elif in_dict['check_for_dev_role'] and lword in self.config.GOOGLE_DEV_ROLES:
+                iobs.append((word, tag, 'B-DEV_ROLE'))
             # INVITE ACTIONS
             elif lword in self.invite_actions and tag.startswith('VB'):
                 in_dict['invite_action'] = True
@@ -189,21 +199,21 @@ class GZChunker(nltk.chunk.ChunkParserI):
         """
         probably_dev = lword in self.dev_titles
         probably_design = lword in self.design_titles
-        probably_multimedia = lword in self.multimedia_titles
+        probably_creative = lword in self.creative_titles
 
         # Use POS to capture possible google grouping
         if probably_dev:
             job_title_tag = 'GDEV'
         elif probably_design:
             job_title_tag = 'GDES'
-        elif probably_multimedia:
-            job_title_tag = 'GMUL'
+        elif probably_creative:
+            job_title_tag = 'GCRE'
         else:
             job_title_tag = 'NP'
 
         probably_job_title = any([probably_dev,
                                   probably_design,
-                                  probably_multimedia,
+                                  probably_creative,
                                   tag.startswith('NP')])
 
         if probably_job_title and in_dict['finding_title']:
@@ -267,7 +277,7 @@ class Chat(object):
         logging.debug('Initialize Tagger')
         self._create_tagger()
         logging.debug('Initialize Chunker')
-        self.chunker = GZChunker()
+        self.chunker = GZChunker(config=config)
 
         # API Admin Classes - used to execute API-driven actions
         self.google_admin = GoogleAdmin(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
@@ -429,7 +439,7 @@ class Chat(object):
                 action = 'gz_gif'
             elif label.startswith(('CREATE_', 'INVITE_')):
                 action = label.lower()
-            elif label in ('EMAIL', 'PERSON', 'USERNAME'):
+            elif label in ('EMAIL', 'PERSON', 'USERNAME', 'DEV_ROLE'):
                 entity_dict[label].append(' '.join(l[0] for l in subtree.leaves()))
             elif label in 'JOB_TITLE':
                 # Store Full title name, and decide Google Groups based on custom POS tags
@@ -458,6 +468,8 @@ class Chat(object):
                         kwargs[label.lower()] = entity_dict[label][0]
                 if entity_dict['GOOGLE_GROUPS']:
                     kwargs['google_groups'] = entity_dict['GOOGLE_GROUPS']
+                elif entity_dict['DEV_ROLE']:
+                    kwargs['google_groups'] += entity_dict['DEV_ROLE']
             elif action in ('invite_to_github',):
                 kwargs['usernames'] = entity_dict.get('USERNAME', [])
 
@@ -542,18 +554,25 @@ class Chat(object):
             given_name, family_name = None, None
         email = kwargs.get('email')
         job_title = kwargs.get('job_title')
+        google_groups = kwargs.get('google_groups') 
         all_good = given_name and family_name and email and job_title
 
         if not all_good:
             if not (given_name and family_name):
                 self._set_action_state(step='name')
-                yield "What is the employee's full name (first & last)?"
+                yield "What is the employee's full name (Capitalized First & Last)?"
             elif not email:
                 self._set_action_state(step='email')
                 yield "What is a personal email address for {}?".format(given_name)
-            else:
+            elif not job_title:
                 self._set_action_state(step='title')
                 yield "What is {}'s job title?".format(given_name)
+        elif google_groups and self.config.GOOGLE_GROUPS['GDEV'] == google_groups:
+            # Is a developer
+            self._set_action_state(step='dev_role',
+                                   regexp_tokenize=True)
+            yield ("I see we're adding a developer! What team will they be on? "
+                   "Enter either 'appdev' or 'nlpdev' please.")
         else:
             username = kwargs.get('username', given_name.lower())
             yield "Okay, let me check if '{}' is an available Google username.".format(username)
@@ -568,8 +587,7 @@ class Chat(object):
             else:
                 yield "We're good to go! Creating the new account now."
                 responses = self.google_admin.create_user(given_name, family_name,
-                                                          username, email, job_title,
-                                                          kwargs.get('google_groups'))
+                                                          username, email, job_title, google_groups)
                 for response in responses:
                     yield response
                 yield "Google account creation complete! What's next?"
