@@ -9,7 +9,6 @@ Tests for `godzillops` module.
 """
 import json
 import os
-import shutil
 import sys
 import unittest
 import urllib.parse as urlparse
@@ -120,15 +119,20 @@ class TestChat(unittest.TestCase):
 
     def _create_google_account_aux(self, title, groups_to_check):
         (response,) = self.chat.respond('I need to create a new google account.')
-        self.assertEqual("What is the employee's full name (first & last)?", response)
+        self.assertEqual("What is the employee's full name (Capitalized First & Last)?", response)
         self.assertEqual(self.chat.action_state['text']['action'], 'create_google_account')
         (response,) = self.chat.respond('Bill')
-        self.assertEqual("What is the employee's full name (first & last)?", response)
+        self.assertEqual("What is the employee's full name (Capitalized First & Last)?", response)
         (response,) = self.chat.respond('Bill Tester')
         self.assertEqual("What is a personal email address for Bill?", response)
         (response,) = self.chat.respond('bill@yahoo.com')
         self.assertEqual("What is Bill's job title?", response)
-        responses = self.chat.respond(title)
+        if 'dev' in groups_to_check:
+            (response,) = self.chat.respond(title)
+            self.assertIn("I see we're adding a developer! What team will they be on?", response)
+            responses = self.chat.respond('frontend')
+        else:
+            responses = self.chat.respond(title)
         expected_responses = [partial(self.assertIn, "'bill' is an available Google username."),
                               partial(self.assertIn, 'Aw nuts, that name is taken. Might I suggest a nickname or something like btester')]
         for index, response in enumerate(responses):
@@ -196,10 +200,10 @@ class TestChat(unittest.TestCase):
         self.gmail_service_mock.users().messages().send().execute = Mock(return_value={'id': '123456789'})
         responses = self.chat.respond('I need to create a google account for Bill Tester.'
                                       ' His email is bill@gmail.com, and his title will be'
-                                      ' Software Engineer.')
+                                      ' Software Engineer on the backend team.')
         expected_responses = [partial(self.assertIn, "'bill' is an available Google username."),
                               partial(self.assertIn, 'good to go'),
-                              partial(self.assertIn, 'groups now: *dev*'),
+                              partial(self.assertIn, 'groups now: *dev, backend*'),
                               partial(self.assertIn, 'Sending them a welcome email'),
                               partial(self.assertIn, 'Google account creation complete!'),
                               self._clear_action_state_assert(True, "At the bidding of my master (text), I have created a new Google Account for Bill Tester.")]
@@ -222,7 +226,7 @@ class TestChat(unittest.TestCase):
 
         Also, the username is unavailable the first time.
         """
-        self._create_google_account_aux('Content Creative', ['multimedia'])
+        self._create_google_account_aux('Content Creative', ['creatives'])
 
     def test_007_invite_to_trello(self):
         """Test adding a user to trello."""
@@ -266,46 +270,53 @@ class TestChat(unittest.TestCase):
 
     def test_0010_invite_to_github(self):
         """Test inviting a new user to our GitHub organization/team."""
-        responses = self.chat.respond('I need to add @billyt3st3r to Github')
+        responses = self.chat.respond('I need to add @billyt3st3r to Github as a backend team member.')
         expected_responses = [partial(self.assertEqual, "I have invited `billyt3st3r` to join *yourorg* in GitHub!"),
                               self._clear_action_state_assert(True, "At the bidding of my master (text), I have invited billyt3st3r to join our GitHub organization.")]
         for index, response in enumerate(responses):
             expected_responses[index](response)
 
-        members_url = self.chat.github_admin.github_api_url.format('teams/1234567/memberships/billyt3st3r')
+        urlreq_calls = []
         data = json.dumps({'role': 'member'}).encode()
-        self.github_urlreq.Request.assert_called_with(url=members_url, data=data, method='PUT',
-                                                      headers={'Content-Type': 'application/json'})
-        self.github_urlreq.urlopen.assert_called_with(self.github_urlreq.Request())
-
-    def test_011_invite_to_github(self):
-        """Test inviting 2 users to our GitHub organization/team, but don't say who at first."""
-        (response,) = self.chat.respond('I need to invite a couple people to join our Github.')
-        self.assertEqual("Please list the GitHub username(s) so I can send out an invite.", response)
-
-        usernames = ('billyt3st3r', 'suzzee_z')
-        responses = self.chat.respond(', '.join(usernames))
-
-        data = json.dumps({'role': 'member'}).encode()
-        expected_responses, urlreq_calls = [], []
-        for username in usernames:
-            expected_responses.append(partial(self.assertIn, "invited `{}` to join *yourorg* in GitHub".format(username)))
-            members_url = self.chat.github_admin.github_api_url.format('teams/1234567/memberships/' + username)
+        for team in self.chat.config.GITHUB_DEV_ROLES['backend']:
+            members_url = self.chat.github_admin.github_api_url.format('teams/{}/memberships/billyt3st3r'.format(team))
             urlreq_calls.append(call(url=members_url, data=data, method='PUT',
                                      headers={'Content-Type': 'application/json'}))
-        expected_responses.append(self._clear_action_state_assert(True, "At the bidding of my master (text), I have invited billyt3st3r, suzzee_z to join our GitHub organization."))
-
-        for index, response in enumerate(responses):
-            expected_responses[index](response)
 
         self.github_urlreq.Request.assert_has_calls(urlreq_calls)
         self.github_urlreq.urlopen.assert_has_calls((call(self.github_urlreq.Request()),
                                                      call(self.github_urlreq.Request())))
 
+    def test_011_invite_to_github(self):
+        """Test inviting a user to our GitHub organization/team, but don't say who at first."""
+        (response,) = self.chat.respond('I need to invite someone to join our Github.')
+        self.assertEqual("What is the GitHub username?", response)
+        username = 'billyt3st3r'
+        (response,) = self.chat.respond(username)
+        (response,) = self.chat.respond('bill@yahoo.com')
+        self.assertIn("What will be the user's dev role on our team? Choose from:", response)
+        responses = self.chat.respond('frontend')
+
+        expected_responses, urlreq_calls = [], []
+        expected_responses.append(partial(self.assertIn, "invited `{}` to join *yourorg* in GitHub".format(username)))
+        urlreq_calls = []
+        data = json.dumps({'role': 'member'}).encode()
+        for team in self.chat.config.GITHUB_DEV_ROLES['frontend']:
+            members_url = self.chat.github_admin.github_api_url.format('teams/{}/memberships/billyt3st3r'.format(team))
+            urlreq_calls.append(call(url=members_url, data=data, method='PUT',
+                                     headers={'Content-Type': 'application/json'}))
+        expected_responses.append(self._clear_action_state_assert(True, "At the bidding of my master (text), I have invited billyt3st3r to join our GitHub organization."))
+
+        for index, response in enumerate(responses):
+            expected_responses[index](response)
+
+        self.github_urlreq.Request.assert_has_calls(urlreq_calls)
+        self.github_urlreq.urlopen.assert_called_with(self.github_urlreq.Request())
+
     def test_012_invite_to_github(self):
         """Test adding a user to github - but throw an exception causing it to fail."""
         self.github_urlresp.status = 404
-        responses = self.chat.respond('I need to add @billyt3st3r to Github.')
+        responses = self.chat.respond('I need to add @billyt3st3r to the frontend team on Github.')
         expected_responses = [partial(self.assertIn, "Huh, I couldn't add `billyt3st3r` to *yourorg* in GitHub"),
                               self._clear_action_state_assert(False, "I have failed you.")]
         for index, response in enumerate(responses):
@@ -343,6 +354,14 @@ class TestChat(unittest.TestCase):
                               self._clear_action_state_assert(False, "I have failed you.")]
         for index, response in enumerate(responses):
             expected_responses[index](response)
+
+    def test_016_create_google_account(self):
+        """Create Developer google account with a multiple Chat.respond calls.
+
+        Also, the username is unavailable the first time.
+        """
+        self._create_google_account_aux('Software Engineer', ['dev', 'frontend'])
+
 
 if __name__ == '__main__':
     sys.exit(unittest.main())

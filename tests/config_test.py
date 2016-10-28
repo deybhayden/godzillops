@@ -23,8 +23,9 @@ GOOGLE_SUPER_ADMIN = 'admin@example.com'
 GOOGLE_GROUPS = {
     'GDES': ['design'],
     'GDEV': ['dev'],
-    'GMUL': ['multimedia']
+    'GCRE': ['creatives']
 }
+GOOGLE_DEV_ROLES = ['backend', 'frontend']
 GOOGLE_CALENDAR_ID = 'cal-id@group.calendar.google.com'
 # === TRELLO ===
 TRELLO_ORG = 'yourorg'
@@ -33,6 +34,9 @@ TRELLO_TOKEN = 'asdfasdfasdfasdfasdfasdfasdfasdfasdfsadfasdfasdfasdfasdfasdfasdf
 # === GITHUB ===
 GITHUB_ORG = 'yourorg'
 GITHUB_ACCESS_TOKEN = 'asdfasdfasdfasdfasdfasdfasdfasdfasdfsadfasdfasdfasdfasdfasdfasdf'
-GITHUB_TEAM = 1234567
+GITHUB_DEV_ROLES = {
+  'backend': [1234567, 8901234],
+  'frontend': [1234567]
+}
 # === ABACUS ===
 ABACUS_ZAPIER_WEBHOOK = 'https://hooks.zapier.com/hooks/catch/asdf'

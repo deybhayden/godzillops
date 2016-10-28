@@ -25,7 +25,7 @@ from apiclient.discovery import build
 from httplib2 import Http
 from oauth2client.service_account import ServiceAccountCredentials
 
-GOOGLE_GROUP_TAGS = ('GDEV', 'GDES', 'GMUL')
+GOOGLE_GROUP_TAGS = ('GDEV', 'GDES', 'GCRE')
 PASSWORD_CHARACTERS = string.ascii_letters + string.punctuation + string.digits
 PASSWORD_LENGTH = 18
 SCOPES = ['https://www.googleapis.com/auth/admin.directory.domain.readonly',

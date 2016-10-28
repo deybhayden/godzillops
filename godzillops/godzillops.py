@@ -81,8 +81,6 @@ class GZChunker(nltk.chunk.ChunkParserI):
             in_dict['create_google_account'] = True
             if action_state['step'] == 'title':
                 in_dict['check_for_title'] = True
-            elif action_state['step'] == 'dev_role':
-                in_dict['check_for_dev_role'] = True
         elif action.startswith('invite_to'):
             in_dict['invite_action'] = True
             in_dict[action] = True
@@ -155,8 +153,8 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 iobs.append((word, tag, 'O'))
             elif in_dict['check_for_title']:
                 iobs.append(self._parse_job_title(in_dict, word, tag, lword))
-            elif in_dict['check_for_dev_role'] and lword in self.config.GOOGLE_DEV_ROLES:
-                iobs.append((word, tag, 'B-DEV_ROLE'))
+            elif lword in self.config.GOOGLE_DEV_ROLES or lword in self.config.GITHUB_DEV_ROLES:
+                iobs.append((lword, tag, 'B-DEV_ROLE'))
             # INVITE ACTIONS
             elif lword in self.invite_actions and tag.startswith('VB'):
                 in_dict['invite_action'] = True
@@ -287,8 +285,7 @@ class Chat(object):
                                         self.config.TRELLO_API_KEY,
                                         self.config.TRELLO_TOKEN)
         self.github_admin = GitHubAdmin(self.config.GITHUB_ORG,
-                                        self.config.GITHUB_ACCESS_TOKEN,
-                                        self.config.GITHUB_TEAM)
+                                        self.config.GITHUB_ACCESS_TOKEN)
         self.abacus_admin = AbacusAdmin(self.config.ABACUS_ZAPIER_WEBHOOK)
 
         # Action state is a dictionary used for managing incomplete
@@ -307,10 +304,10 @@ class Chat(object):
         you would run:
 
         .. highlight::
-        
+
             from nltk.corpus import brown
             from nltk.tag.sequential import ClassifierBasedPOSTagger
-            
+
             self.tagger = ClassifierBasedPOSTagger(train=brown.tagged_sents())
             with open('tagger.pickle', 'wb') as tagger_pickle:
                 pickle.dump(self.tagger, tagger_pickle)
@@ -350,8 +347,7 @@ class Chat(object):
             elif completed_action == 'invite_to_trello':
                 message += 'I have invited {person} <{email}> to join our Trello organization.'.format(**old_action_state['kwargs'])
             elif completed_action == 'invite_to_github':
-                fmt_usernames = ', '.join(old_action_state['kwargs']['usernames'])
-                message += 'I have invited {} to join our GitHub organization.'.format(fmt_usernames)
+                message += 'I have invited {} to join our GitHub organization.'.format(old_action_state['kwargs']['username'])
             elif completed_action == 'invite_to_abacus':
                 message += 'I have invited <{email}> to join our Abacus organization.'.format(**old_action_state['kwargs'])
             else:
@@ -422,8 +418,8 @@ class Chat(object):
             kwargs['username'], _ = chunked_text.leaves()[0]
             return action, kwargs
         elif action == 'invite_to_github' and action_state['step'] == 'username':
-            # Short circuit subtree parsing, and treat all leaves as usernames
-            kwargs['usernames'] = [u for u, _ in chunked_text.leaves()]
+            # Short circuit subtree parsing, and treat all leaves as username
+            kwargs['username'], _ = chunked_text.leaves()[0]
             return action, kwargs
 
         # Used to store named entities
@@ -462,16 +458,17 @@ class Chat(object):
 
         if action != 'cancel':
             # Prepare New Kwarg Values for selected action
-            if action in ('create_google_account', 'invite_to_trello', 'invite_to_abacus'):
-                for label in ('JOB_TITLE', 'PERSON', 'EMAIL'):
-                    if entity_dict[label]:
-                        kwargs[label.lower()] = entity_dict[label][0]
-                if entity_dict['GOOGLE_GROUPS']:
-                    kwargs['google_groups'] = entity_dict['GOOGLE_GROUPS']
-                elif entity_dict['DEV_ROLE']:
+            for label in ('JOB_TITLE', 'PERSON', 'EMAIL', 'USERNAME'):
+                if entity_dict[label]:
+                    kwargs[label.lower()] = entity_dict[label][0]
+            if entity_dict['GOOGLE_GROUPS']:
+                kwargs['google_groups'] = entity_dict['GOOGLE_GROUPS']
+
+            if entity_dict['DEV_ROLE']:
+                if 'google_groups' in kwargs:
                     kwargs['google_groups'] += entity_dict['DEV_ROLE']
-            elif action in ('invite_to_github',):
-                kwargs['usernames'] = entity_dict.get('USERNAME', [])
+                else:
+                    kwargs['dev_role'] = entity_dict['DEV_ROLE'][0]
 
         # Update current action state with determined course of action
         self._set_action_state(action=action, kwargs=kwargs)
@@ -554,7 +551,7 @@ class Chat(object):
             given_name, family_name = None, None
         email = kwargs.get('email')
         job_title = kwargs.get('job_title')
-        google_groups = kwargs.get('google_groups') 
+        google_groups = kwargs.get('google_groups')
         all_good = given_name and family_name and email and job_title
 
         if not all_good:
@@ -564,7 +561,7 @@ class Chat(object):
             elif not email:
                 self._set_action_state(step='email')
                 yield "What is a personal email address for {}?".format(given_name)
-            elif not job_title:
+            else:
                 self._set_action_state(step='title')
                 yield "What is {}'s job title?".format(given_name)
         elif google_groups and self.config.GOOGLE_GROUPS['GDEV'] == google_groups:
@@ -572,7 +569,7 @@ class Chat(object):
             self._set_action_state(step='dev_role',
                                    regexp_tokenize=True)
             yield ("I see we're adding a developer! What team will they be on? "
-                   "Enter either 'appdev' or 'nlpdev' please.")
+                   "Choose from: '{}'.".format("', '".join(self.config.GOOGLE_DEV_ROLES)))
         else:
             username = kwargs.get('username', given_name.lower())
             yield "Okay, let me check if '{}' is an available Google username.".format(username)
@@ -625,21 +622,28 @@ class Chat(object):
         """Invite a user to a GitHub organization
 
         Args:
-            usernames (Optional[list]): List of GitHub usernames, if not passed, will prompt for it.
+            username (Optional[str]): GitHub username, if not passed, will prompt for it.
+            dev_role (Optional[str]): What dev role is this developer? If not passed, will prompt for it.
         """
-        usernames = kwargs.get('usernames')
+        username = kwargs.get('username')
+        dev_role = kwargs.get('dev_role')
 
-        if not usernames:
+        if not username:
             self._set_action_state(step='username', regexp_tokenize=True)
-            yield "Please list the GitHub username(s) so I can send out an invite."
+            yield "What is the GitHub username?"
+        elif not dev_role:
+            self._set_action_state(step='dev_role',
+                                   regexp_tokenize=True)
+            yield ("What will be the user's dev role on our team? "
+                   "Choose from: '{}'.".format("', '".join(self.config.GITHUB_DEV_ROLES.keys())))
         else:
-            for username in usernames:
-                success = self.github_admin.invite_to_github(username)
-                if success:
-                    message = "I have invited `{}` to join *{}* in GitHub!"
-                else:
-                    message = "Huh, I couldn't add `{}` to *{}* in GitHub."
-                yield message.format(username, self.github_admin.github_org)
+            success = self.github_admin.invite_to_github(username, 
+                                                         self.config.GITHUB_DEV_ROLES[dev_role])
+            if success:
+                message = "I have invited `{}` to join *{}* in GitHub!"
+            else:
+                message = "Huh, I couldn't add `{}` to *{}* in GitHub."
+            yield message.format(username, self.github_admin.github_org)
             yield self._clear_action_state(success, admin_required=True)
 
     @requires_admin
