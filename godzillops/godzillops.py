@@ -637,7 +637,7 @@ class Chat(object):
             yield ("What will be the user's dev role on our team? "
                    "Choose from: '{}'.".format("', '".join(self.config.GITHUB_DEV_ROLES.keys())))
         else:
-            success = self.github_admin.invite_to_github(username, 
+            success = self.github_admin.invite_to_github(username,
                                                          self.config.GITHUB_DEV_ROLES[dev_role])
             if success:
                 message = "I have invited `{}` to join *{}* in GitHub!"
