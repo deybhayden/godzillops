@@ -98,7 +98,7 @@ dist: clean
 install: clean
 	$(CREATE_ENV)
 	$(ENV)python setup.py install
-	$(ENV)python -m nltk.downloader names brown
+	$(ENV)python -m nltk.downloader brown
 
 install-codeship: install
 	$(ENV)pip install coverage

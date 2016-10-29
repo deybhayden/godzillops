@@ -22,7 +22,6 @@ from datetime import datetime
 
 import nltk
 from dateutil.tz import tzlocal
-from nltk.corpus import names
 from nltk.tokenize import TweetTokenizer
 
 from .abacus import AbacusAdmin
@@ -59,10 +58,6 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 Used to authenticate API services and connect data stores.
         """
         self.config = config
-        # Create a set of names from the NLTK names corpus - used for PERSON recognition
-        self.names = set(names.words())
-        # Unique first names that need to be supported as well
-        self.names.add('Tres')
 
     def _generate_in_dict(self, action_state):
         """Use previous action state to default in_dict
@@ -115,15 +110,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 iobs.append((word, tag, 'B-GODZILLA'))
             # They said hello!
             elif lword in self.greetings:
-                in_dict['greeting'] = True
                 iobs.append((word, tag, 'B-GREETING'))
-            # Named Entity Recognition - Find People
-            elif word in self.names or in_dict['person'] and (word[0].isupper() or tag.startswith('NP')):
-                if in_dict['person']:
-                    iobs.append((word, tag, 'I-PERSON'))
-                else:
-                    iobs.append((word, tag, 'B-PERSON'))
-                    in_dict['person'] = True
             # Named Entity Recognition - Find Emails
             elif self.email_regexp.match(lword):
                 # This is probably an email address
@@ -174,6 +161,13 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 # when it is encountered
                 iobs.append((word, tag, 'B-CANCEL'))
                 break
+            # Named Entity Recognition - Handle All Previously Unmatched Proper Nouns
+            elif tag.startswith('NP') or (in_dict['person'] and word[0].isupper()):
+                if in_dict['person']:
+                    iobs.append((word, tag, 'I-PERSON'))
+                else:
+                    iobs.append((word, tag, 'B-PERSON'))
+                    in_dict['person'] = True
             # Just a word, tag it and move on
             else:
                 in_dict['person'] = False

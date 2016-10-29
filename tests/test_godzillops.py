@@ -194,25 +194,25 @@ class TestChat(unittest.TestCase):
     def test_004_create_google_account(self):
         """Create google account with a single Chat.respond call."""
         # Make sure that the username is available
-        self.admin_service_mock.users().get(userKey='bill@example.com').execute = Mock(side_effect=HttpError(Response({'status': 404}),
-                                                                                                             b'User does not exist.'))
+        self.admin_service_mock.users().get(userKey='almondo@example.com').execute = Mock(side_effect=HttpError(Response({'status': 404}),
+                                                                                                                 b'User does not exist.'))
         # Set up proper gmail response
         self.gmail_service_mock.users().messages().send().execute = Mock(return_value={'id': '123456789'})
-        responses = self.chat.respond('I need to create a google account for Bill Tester.'
-                                      ' His email is bill@gmail.com, and his title will be'
+        responses = self.chat.respond('I need to create a google account for Almondo Finklebottom.'
+                                      ' His email is almondo@gmail.com, and his title will be'
                                       ' Software Engineer on the backend team.')
-        expected_responses = [partial(self.assertIn, "'bill' is an available Google username."),
+        expected_responses = [partial(self.assertIn, "'almondo' is an available Google username."),
                               partial(self.assertIn, 'good to go'),
                               partial(self.assertIn, 'groups now: *dev, backend*'),
                               partial(self.assertIn, 'Sending them a welcome email'),
                               partial(self.assertIn, 'Google account creation complete!'),
-                              self._clear_action_state_assert(True, "At the bidding of my master (text), I have created a new Google Account for Bill Tester.")]
+                              self._clear_action_state_assert(True, "At the bidding of my master (text), I have created a new Google Account for Almondo Finklebottom.")]
         for index, response in enumerate(responses):
             expected_responses[index](response)
 
         self.cal_service_mock.acl().insert.assert_called_with(calendarId=self.chat.config.GOOGLE_CALENDAR_ID,
                                                               body={'role': 'reader',
-                                                                    'scope': {'type': 'user', 'value': 'bill@example.com'}})
+                                                                    'scope': {'type': 'user', 'value': 'almondo@example.com'}})
 
     def test_005_create_google_account(self):
         """Create Designer-type google account with a multiple Chat.respond calls.
