@@ -274,7 +274,8 @@ class Chat(object):
         # API Admin Classes - used to execute API-driven actions
         self.google_admin = GoogleAdmin(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
                                         self.config.GOOGLE_SUPER_ADMIN,
-                                        self.config.GOOGLE_CALENDAR_ID)
+                                        self.config.GOOGLE_CALENDAR_ID,
+                                        self.config.GOOGLE_WELCOME_TEXT)
         self.trello_admin = TrelloAdmin(self.config.TRELLO_ORG,
                                         self.config.TRELLO_API_KEY,
                                         self.config.TRELLO_TOKEN)

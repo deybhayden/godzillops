@@ -27,6 +27,7 @@ GOOGLE_GROUPS = {
 }
 GOOGLE_DEV_ROLES = ['backend', 'frontend']
 GOOGLE_CALENDAR_ID = 'cal-id@group.calendar.google.com'
+GOOGLE_WELCOME_TEXT = ''
 # === TRELLO ===
 TRELLO_ORG = 'yourorg'
 TRELLO_API_KEY = 'asdfasdfasdfasdfasdfasdfasdfasdf'
@@ -35,8 +36,8 @@ TRELLO_TOKEN = 'asdfasdfasdfasdfasdfasdfasdfasdfasdfsadfasdfasdfasdfasdfasdfasdf
 GITHUB_ORG = 'yourorg'
 GITHUB_ACCESS_TOKEN = 'asdfasdfasdfasdfasdfasdfasdfasdfasdfsadfasdfasdfasdfasdfasdfasdf'
 GITHUB_DEV_ROLES = {
-  'backend': [1234567, 8901234],
-  'frontend': [1234567]
+    'backend': [1234567, 8901234],
+    'frontend': [1234567]
 }
 # === ABACUS ===
 ABACUS_ZAPIER_WEBHOOK = 'https://hooks.zapier.com/hooks/catch/asdf'

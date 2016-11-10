@@ -41,7 +41,7 @@ class GoogleAdmin(object):
     This class takes a couple configuration pieces - service account keys & super admin account - and
     returns a class instance capable of doing basic google user management.
     """
-    def __init__(self, service_account_json, sub_account, calendar_id):
+    def __init__(self, service_account_json, sub_account, calendar_id, welcome_text):
         """Initialize Google API Service Interface
 
         Given a service account json object and super admin account email from Google Apps Domain,
@@ -51,6 +51,7 @@ class GoogleAdmin(object):
             service_account_json (dict): Parsed JSON Key File for a Google Service Account
             sub_account (str): The super admin account to act on behalf of
             calendar_id (str): The company calendar to add new users to as readers
+            welcome_text (str): Customizable welcome email text for each new account
         """
         credentials = ServiceAccountCredentials._from_parsed_json_keyfile(service_account_json, SCOPES)
         delegated_creds = credentials.create_delegated(sub_account)
@@ -61,6 +62,7 @@ class GoogleAdmin(object):
         self.gmail_service = build('gmail', 'v1', http=http)
         self.cal_service = build('calendar', 'v3', http=http)
         self.primary_domain = self._get_primary_domain()
+        self.welcome_text = welcome_text
 
     def create_user(self, given_name, family_name, username, personal_email, job_title, groups):
         """Create a new Google user and add him/her to the list of groups passed.
@@ -109,19 +111,20 @@ class GoogleAdmin(object):
         yield 'Sending them a welcome email to their personal address with login credentials to the new account.'
         logging.info('Emailing {} the credentials of the new google account'.format(given_name))
         message_text = """
-        Hello {given_name},
+Hello {given_name},
 
-        You have a new account at {domain}
-        Account details:
+You have a new account at {domain}
+Account details:
 
-        Username
-        {username}
+Username
+{username}
 
-        Password
-        {password}
+Password
+{password}
 
-        Start using your new account by signing in at https://www.google.com/accounts/AccountChooser?Email={email}&continue=https://apps.google.com/user/hub
-        """.format(domain=self.primary_domain, **locals())
+Start using your new account by signing in at https://www.google.com/accounts/AccountChooser?Email={email}&continue=https://apps.google.com/user/hub
+{welcome_text}""".format(domain=self.primary_domain, welcome_text=self.welcome_text, **locals())
+
         message = self._create_message(personal_email, 'Welcome to {}'.format(self.primary_domain), message_text)
         # Send message as super admin
         self.send_message('me', message)
