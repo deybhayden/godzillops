@@ -1,0 +1,22 @@
+version: 0.1
+
+environment_variables:
+  plaintext:
+    PYTHON3: "/usr/bin/python3"
+
+phases:
+  install:
+    commands:
+      - python setup.py install
+      - python -m nltk.downloader brown
+      - pip install coverage
+  build:
+    commands:
+      - coverage run --branch --source godzillops setup.py test
+      - coverage report -m --fail-under 100
+
+artifacts:
+  files:
+    - "deploy/*"
+  discard-paths: yes
+

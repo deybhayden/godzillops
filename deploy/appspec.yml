@@ -1,0 +1,8 @@
+version: 0.0
+
+os: linux
+hooks:
+  BeforeInstall:
+    - location: update-gz.sh
+      timeout: 30
+      runas: ec2-user

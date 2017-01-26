@@ -71,10 +71,6 @@ coverage:
 	$(ENV)coverage html
 	$(BROWSER) htmlcov/index.html
 
-coverage-codeship:
-	$(ENV)coverage run --branch --source godzillops setup.py test
-	$(ENV)coverage report -m --fail-under 100
-
 docs:
 	$(RM) godzillops.rst
 	$(RM) docs/modules.rst
@@ -99,9 +95,6 @@ install: clean
 	$(CREATE_ENV)
 	$(ENV)python setup.py install
 	$(ENV)python -m nltk.downloader brown
-
-install-codeship: install
-	$(ENV)pip install coverage
 
 install-dev: install
 	$(ENV)pip install --upgrade -r requirements_dev.txt
