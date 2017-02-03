@@ -120,6 +120,9 @@ class GZChunker(nltk.chunk.ChunkParserI):
                     # <mailto:hayden767@gmail.com|hayden767@gmail.com>
                     # Strip that before returning in parsed tree
                     lword = lword.split('|')[-1][:-1]
+                if lword.startswith('mailto:'):
+                    # Protect from copy paste
+                    lword = lword.split(':', 1)[1]
                 iobs.append((lword, 'NN', 'B-EMAIL'))
             # Named Entity Recognition - Usernames
             elif lword.startswith('@'):

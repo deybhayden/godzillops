@@ -117,7 +117,7 @@ class TestChat(unittest.TestCase):
         return partial(self.assertEqual, {'admin_action_complete': success,
                                           'message': msg})
 
-    def _create_google_account_aux(self, title, groups_to_check):
+    def _create_google_account_aux(self, title, groups_to_check, mailto_entropy=False):
         (response,) = self.chat.respond('I need to create a new google account.')
         self.assertEqual("What is the employee's full name (Capitalized First & Last)?", response)
         self.assertEqual(self.chat.action_state['text']['action'], 'create_google_account')
@@ -125,7 +125,7 @@ class TestChat(unittest.TestCase):
         self.assertEqual("What is the employee's full name (Capitalized First & Last)?", response)
         (response,) = self.chat.respond('Bill Tester')
         self.assertEqual("What is a personal email address for Bill?", response)
-        (response,) = self.chat.respond('bill@yahoo.com')
+        (response,) = self.chat.respond(('mailto:' if mailto_entropy else '') + 'bill@yahoo.com')
         self.assertEqual("What is Bill's job title?", response)
         if 'dev' in groups_to_check:
             (response,) = self.chat.respond(title)
@@ -365,7 +365,7 @@ class TestChat(unittest.TestCase):
     def test_017_create_google_account(self):
         """Create General Manager google account with a multiple Chat.respond calls.
         """
-        self._create_google_account_aux('General Manager', ['founders'])
+        self._create_google_account_aux('General Manager', ['founders'], mailto_entropy=True)
 
 
 if __name__ == '__main__':
