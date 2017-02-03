@@ -42,6 +42,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
     invite_actions = {'add', 'invite'}
     dev_titles = {'data', 'scientist', 'software', 'developer', 'engineer', 'coder', 'programmer'}
     design_titles = {'designer', 'ux', 'product', 'graphic'}
+    founder_titles = {'founder', 'ceo', 'cto', 'gm', 'general', 'manager'}
     creative_titles = {'content', 'creative'}
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo', 'howdy'}
     gz_aliases = {'godzillops', 'godzilla', 'gojira', 'gz'}
@@ -192,6 +193,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
         probably_dev = lword in self.dev_titles
         probably_design = lword in self.design_titles
         probably_creative = lword in self.creative_titles
+        probably_founder = lword in self.founder_titles
 
         # Use POS to capture possible google grouping
         if probably_dev:
@@ -200,12 +202,15 @@ class GZChunker(nltk.chunk.ChunkParserI):
             job_title_tag = 'GDES'
         elif probably_creative:
             job_title_tag = 'GCRE'
+        elif probably_founder:
+            job_title_tag = 'GFOU'
         else:
             job_title_tag = 'NP'
 
         probably_job_title = any([probably_dev,
                                   probably_design,
                                   probably_creative,
+                                  probably_founder,
                                   tag.startswith('NP')])
 
         if probably_job_title and in_dict['finding_title']:
@@ -275,7 +280,8 @@ class Chat(object):
         self.google_admin = GoogleAdmin(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
                                         self.config.GOOGLE_SUPER_ADMIN,
                                         self.config.GOOGLE_CALENDAR_ID,
-                                        self.config.GOOGLE_WELCOME_TEXT)
+                                        self.config.GOOGLE_WELCOME_TEXT,
+                                        self.config.GOOGLE_WELCOME_ATTACHMENTS)
         self.trello_admin = TrelloAdmin(self.config.TRELLO_ORG,
                                         self.config.TRELLO_API_KEY,
                                         self.config.TRELLO_TOKEN)

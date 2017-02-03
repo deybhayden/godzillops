@@ -23,11 +23,14 @@ GOOGLE_SUPER_ADMIN = 'admin@example.com'
 GOOGLE_GROUPS = {
     'GDES': ['design'],
     'GDEV': ['dev'],
-    'GCRE': ['creatives']
+    'GCRE': ['creatives'],
+    'GFOU': ['founders']
+
 }
 GOOGLE_DEV_ROLES = ['backend', 'frontend']
 GOOGLE_CALENDAR_ID = 'cal-id@group.calendar.google.com'
 GOOGLE_WELCOME_TEXT = ''
+GOOGLE_WELCOME_ATTACHMENTS = []
 # === TRELLO ===
 TRELLO_ORG = 'yourorg'
 TRELLO_API_KEY = 'asdfasdfasdfasdfasdfasdfasdfasdf'

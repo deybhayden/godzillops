@@ -362,6 +362,11 @@ class TestChat(unittest.TestCase):
         """
         self._create_google_account_aux('Software Engineer', ['dev', 'frontend'])
 
+    def test_017_create_google_account(self):
+        """Create General Manager google account with a multiple Chat.respond calls.
+        """
+        self._create_google_account_aux('General Manager', ['founders'])
+
 
 if __name__ == '__main__':
     sys.exit(unittest.main())
