@@ -13,7 +13,7 @@ phases:
   build:
     commands:
       - coverage run --branch --source godzillops setup.py test
-      - coverage report -m --fail-under 100
+      - coverage report -m
 
 artifacts:
   files:
