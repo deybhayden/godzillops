@@ -20,6 +20,7 @@ import mimetypes
 import os
 import random
 import string
+from email.encoders import encode_base64
 from email.mime.audio import MIMEAudio
 from email.mime.base import MIMEBase
 from email.mime.image import MIMEImage
@@ -177,6 +178,7 @@ Start using your new account by signing in at https://www.google.com/accounts/Ac
                     msg = MIMEBase(main_type, sub_type)
                     msg.set_payload(fp.read())
 
+            encode_base64(msg)
             filename = os.path.basename(attachment)
             msg.add_header('Content-Disposition', 'attachment', filename=filename)
             message.attach(msg)
