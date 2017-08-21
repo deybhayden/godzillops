@@ -9,7 +9,6 @@ webbrowser.open("file://" + pathname2url(os.path.abspath(sys.argv[1])))
 endef
 export BROWSER_PYSCRIPT
 BROWSER := python -c "$$BROWSER_PYSCRIPT"
-PYTHON3 ?= /usr/local/bin/python3
 
 ifeq ($(OS),Windows_NT)
 	CREATE_ENV := virtualenv env
@@ -17,7 +16,7 @@ ifeq ($(OS),Windows_NT)
 	FIND := "C:\Program Files\Git\usr\bin\find.exe"
 	ENV := env\Scripts\\
 else
-	CREATE_ENV := virtualenv --python $(PYTHON3) env
+	CREATE_ENV := virtualenv --python python3 env
 	ENV := env/bin/
 	RM := rm -rf
 	FIND := find
