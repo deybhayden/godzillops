@@ -11,13 +11,9 @@ export BROWSER_PYSCRIPT
 BROWSER := python -c "$$BROWSER_PYSCRIPT"
 
 ifeq ($(OS),Windows_NT)
-	CREATE_ENV := virtualenv env
 	RM := "rm" -rf
 	FIND := "C:\Program Files\Git\usr\bin\find.exe"
-	ENV := env\Scripts\\
 else
-	CREATE_ENV := virtualenv --python python3 env
-	ENV := env/bin/
 	RM := rm -rf
 	FIND := find
 endif
@@ -41,7 +37,7 @@ help:
 clean: clean-build clean-pyc clean-test
 
 clean-build:
-	$(RM) env
+	pyenv uninstall -f godzillops
 	$(RM) build
 	$(RM) dist
 	$(RM) .eggs
@@ -59,21 +55,21 @@ clean-test:
 	$(RM) htmlcov
 
 lint:
-	$(ENV)pylint godzillops tests
+	pylint godzillops tests
 
 test:
-	$(ENV)python setup.py test
+	python setup.py test
 
 coverage:
-	$(ENV)coverage run --branch --source godzillops setup.py test
-	$(ENV)coverage report -m
-	$(ENV)coverage html
+	coverage run --branch --source godzillops setup.py test
+	coverage report -m
+	coverage html
 	$(BROWSER) htmlcov/index.html
 
 docs:
 	$(RM) godzillops.rst
 	$(RM) docs/modules.rst
-	$(ENV)sphinx-apidoc -o docs godzillops
+	sphinx-apidoc -o docs godzillops
 	$(MAKE) -C docs clean
 	$(MAKE) -C docs html
 	$(BROWSER) docs/_build/html/index.html
@@ -82,18 +78,18 @@ servedocs: docs
 	watchmedo shell-command -p '*.rst' -c '$(MAKE) -C docs html' -R -D .
 
 release: clean
-	$(ENV)python setup.py sdist upload
-	$(ENV)python setup.py bdist_wheel upload
+	python setup.py sdist upload
+	python setup.py bdist_wheel upload
 
 dist: clean
-	$(ENV)python setup.py sdist
-	$(ENV)python setup.py bdist_wheel
+	python setup.py sdist
+	python setup.py bdist_wheel
 	ls -l dist
 
 install: clean
-	$(CREATE_ENV)
-	$(ENV)python setup.py install
-	$(ENV)python -m nltk.downloader brown
+	pyenv virtualenv 3.4.3 godzillops
+	python setup.py install
+	python -m nltk.downloader brown
 
 install-dev: install
-	$(ENV)pip install --upgrade -r requirements_dev.txt
+	pip install --upgrade -r requirements_dev.txt
