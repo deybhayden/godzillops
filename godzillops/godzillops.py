@@ -21,13 +21,37 @@ from collections import defaultdict
 from datetime import datetime
 
 import nltk
-from dateutil.tz import tzlocal
 from nltk.tokenize import TweetTokenizer
+from dateutil.tz import tzlocal
 
 from .abacus import AbacusAdmin
 from .github import GitHubAdmin
 from .google import GOOGLE_GROUP_TAGS, GoogleAdmin
 from .trello import TrelloAdmin
+
+
+def _generate_in_dict(action_state):
+    """Use previous action state to default in_dict
+
+    Args:
+        action_state (dict): Current action for a given user (if in the middle of an unfinished action).
+    Returns:
+        dict: Used to keep track of mid-sentence context when deciding
+            how to chunk the tagged sentence into meaningful pieces.
+    """
+    in_dict = defaultdict(bool)
+    action = action_state.get('action') or ''
+
+    if action == 'create_google_account':
+        in_dict['create_action'] = True
+        in_dict['create_google_account'] = True
+        if action_state['step'] == 'title':
+            in_dict['check_for_title'] = True
+    elif action.startswith('invite_to'):
+        in_dict['invite_action'] = True
+        in_dict[action] = True
+
+    return in_dict
 
 
 class GZChunker(nltk.chunk.ChunkParserI):
@@ -60,29 +84,6 @@ class GZChunker(nltk.chunk.ChunkParserI):
         """
         self.config = config
 
-    def _generate_in_dict(self, action_state):
-        """Use previous action state to default in_dict
-
-        Args:
-            action_state (dict): Current action for a given user (if in the middle of an unfinished action).
-        Returns:
-            in_dict (dict): Used to keep track of mid-sentence context when deciding
-                how to chunk the tagged sentence into meaningful pieces.
-        """
-        in_dict = defaultdict(bool)
-        action = action_state.get('action') or ''
-
-        if action == 'create_google_account':
-            in_dict['create_action'] = True
-            in_dict['create_google_account'] = True
-            if action_state['step'] == 'title':
-                in_dict['check_for_title'] = True
-        elif action.startswith('invite_to'):
-            in_dict['invite_action'] = True
-            in_dict[action] = True
-
-        return in_dict
-
     def parse(self, tagged_text, action_state):
         """Implementing ChunkParserI's parse method.
 
@@ -98,7 +99,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
         logging.debug(tagged_text)
 
         iobs = []
-        in_dict = self._generate_in_dict(action_state)
+        in_dict = _generate_in_dict(action_state)
         i = 0
         tagged_len = len(tagged_text)
 
@@ -245,16 +246,18 @@ def requires_admin(fxn):
     Args:
         fxn (function): The function being protected by the admin check.
     Returns:
-        responses (generator): A generator of string responses from the executed function.
+        generator: A generator of string responses from the executed function.
             An empty tuple will be returned if permission is denied.
     """
     def wrapped_fxn(*args, **kwargs):
+        """
+        Wrapped function to enforce some functions that require admin rights to execute
+        """
         self = args[0]
         if self.context['admin']:
             logging.info('Admin access granted to user "%s"', self.context['user']['name'])
             return fxn(*args, **kwargs)
-        else:
-            return ()
+        return ()
     return wrapped_fxn
 
 
@@ -342,7 +345,7 @@ class Chat(object):
             action_success (bool): True if the action was successful, False otherwise
             admin_required (bool): True if the action was an administrator action, False by default.
         Returns:
-            completed_dict (dict): A dictionary representing information about the completed action and
+            dict: A dictionary representing information about the completed action and
                 if it was successful or not.
         """
         old_action_state = self.action_state.pop(self.context['user']['id'], {})
@@ -383,6 +386,9 @@ class Chat(object):
         Args:
             context (dict): Passed dictionary containing the message's context:
                 username, timezone, etc.
+
+        Raises:
+            ValueError: If user isn't in context, we give up
         """
         now = datetime.now(tzlocal())
         if context is None:
@@ -497,7 +503,7 @@ class Chat(object):
                 information about the user sending the text (i.e. user id, timestamp of message).
 
         Returns:
-            responses (generator): A generator of string responses from the Godzillops bot sent from the executed action.
+            generator: A generator of string responses from the Godzillops bot sent from the executed action.
         """
         responses = ()
         try:
@@ -525,7 +531,7 @@ class Chat(object):
                 # If we should take action, execute the function with the kwargs
                 # now and return the results
                 responses = getattr(self, action)(**kwargs)
-        except:
+        except BaseException:
             logging.exception("An error occurred responding to the user.")
             responses = ('I... erm... what? Try again.',)
         return responses
@@ -534,7 +540,7 @@ class Chat(object):
     # ACTION METHODS
     #
 
-    def cancel(self, **kwargs):
+    def cancel(self, **_):
         """Clear any current action state (cancel creating a google account, for example)."""
         yield "Previous action canceled. I didn't want to do it anyways."
         yield self._clear_action_state(action_success=True)
@@ -543,13 +549,13 @@ class Chat(object):
     def create_google_account(self, **kwargs):
         """Create a new Google user account
 
-        Args:
-            person (Optional[str]): Full name of user, if not passed, will prompt for it.
-            email (Optional[str]): Personal email address, if not passed, will prompt for it.
-            job_title (Optional[str]): User's Job Title, if not passed, will prompt for it.
-            google_groups (Optional[list]): List of Google groups to add a user to.
+        Keyword Args:
+            person (str): Full name of user, if not passed, will prompt for it.
+            email (str): Personal email address, if not passed, will prompt for it.
+            job_title (str): User's Job Title, if not passed, will prompt for it.
+            google_groups (list): List of Google groups to add a user to.
                 Previously determined from job_title.
-            username (Optional[str]): Specific username for user.
+            username (str): Specific username for user.
         """
         split_name = kwargs.get('person', '').split(maxsplit=1)
         split_name_len = len(split_name)
@@ -604,9 +610,9 @@ class Chat(object):
     def invite_to_trello(self, **kwargs):
         """Invite a user to a Trello organization
 
-        Args:
-            person (Optional[str]): Name of user, if not passed, will prompt for it.
-            email (Optional[str]): Email address, if not passed, will prompt for it.
+        Keyword Args:
+            person (str): Name of user, if not passed, will prompt for it.
+            email (str): Email address, if not passed, will prompt for it.
         """
         name = kwargs.get('person')
         email = kwargs.get('email')
@@ -631,9 +637,9 @@ class Chat(object):
     def invite_to_github(self, **kwargs):
         """Invite a user to a GitHub organization
 
-        Args:
-            username (Optional[str]): GitHub username, if not passed, will prompt for it.
-            dev_role (Optional[str]): What dev role is this developer? If not passed, will prompt for it.
+        Keyword Args:
+            username (str): GitHub username, if not passed, will prompt for it.
+            dev_role (str): What dev role is this developer? If not passed, will prompt for it.
         """
         username = kwargs.get('username')
         dev_role = kwargs.get('dev_role')
@@ -660,8 +666,8 @@ class Chat(object):
     def invite_to_abacus(self, **kwargs):
         """Invite a user to a Abacus organization
 
-        Args:
-            email (Optional[str]): Email address, if not passed, will prompt for it.
+        Keyword Args:
+            email (str): Email address, if not passed, will prompt for it.
         """
         email = kwargs.get('email')
 
@@ -676,13 +682,13 @@ class Chat(object):
                 yield "Huh, that didn't work, check out the logs?"
             yield self._clear_action_state(success, admin_required=True)
 
-    def greet(self, **kwargs):
+    def greet(self, **_):
         """Say Hello back in response to a greeting from the user."""
         yield random.choice(list(self.chunker.greetings)).title()
         yield 'Can I help you with anything?'
         yield self._clear_action_state(action_success=True)
 
-    def gz_gif(self, **kwargs):
+    def gz_gif(self, **_):
         """Return a random Godzilla GIF."""
         yield 'RAWR!'
         with urlreq.urlopen(self.config.GZ_GIF_URL) as r:
