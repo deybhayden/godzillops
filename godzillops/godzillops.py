@@ -46,7 +46,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
     creative_titles = {'content', 'creative'}
     greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo', 'howdy'}
     gz_aliases = {'godzillops', 'godzilla', 'gojira', 'gz'}
-    cancel_actions = {'stop', 'cancel', 'nevermind', 'quit'}
+    cancel_actions = {'stop', 'cancel', 'nevermind', 'quit', 'nvm'}
     yes = {'yes', 'yeah', 'yep', 'yup', 'sure'}
     no = {'no', 'nope', 'nah'}
     email_regexp = re.compile(r'[^@]+@[^@]+\.[^@]+', re.IGNORECASE)
