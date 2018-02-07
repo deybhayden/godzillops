@@ -174,6 +174,10 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 else:
                     iobs.append((word, tag, 'B-PERSON'))
                     in_dict['person'] = True
+            # For some odd reason, this name isn't getting tagged as a proper noun
+            elif in_dict['create_google_account'] and word[0].isupper():
+                iobs.append((word, tag, 'B-PERSON'))
+                in_dict['person'] = True
             # Just a word, tag it and move on
             else:
                 in_dict['person'] = False
