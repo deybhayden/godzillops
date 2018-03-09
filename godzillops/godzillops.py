@@ -163,7 +163,8 @@ class GZChunker(nltk.chunk.ChunkParserI):
                 in_dict['invite_to_abacus'] = True
                 iobs.append((word, tag, 'B-INVITE_TO_ABACUS'))
             # CANCEL ACTION
-            elif lword in self.cancel_actions and (in_dict['create_action'] or in_dict['invite_action']) and not iobs:
+            elif lword in self.cancel_actions and (in_dict['create_action']
+                                                   or in_dict['invite_action']) and not iobs:
                 # Only recognize cancel action by itself, and return immediately
                 # when it is encountered
                 iobs.append((word, tag, 'B-CANCEL'))
@@ -217,11 +218,10 @@ class GZChunker(nltk.chunk.ChunkParserI):
         else:
             job_title_tag = 'NP'
 
-        probably_job_title = any([probably_dev,
-                                  probably_design,
-                                  probably_creative,
-                                  probably_founder,
-                                  tag.startswith('NP')])
+        probably_job_title = any([
+            probably_dev, probably_design, probably_creative, probably_founder,
+            tag.startswith('NP')
+        ])
 
         if probably_job_title and in_dict['finding_title']:
             return (word, job_title_tag, 'I-JOB_TITLE')
@@ -233,6 +233,7 @@ class GZChunker(nltk.chunk.ChunkParserI):
             del in_dict['check_for_title']
 
         return (word, tag, 'O')
+
 
 # == END of GZChunker ===
 
@@ -249,6 +250,7 @@ def requires_admin(fxn):
         generator: A generator of string responses from the executed function.
             An empty tuple will be returned if permission is denied.
     """
+
     def wrapped_fxn(*args, **kwargs):
         """
         Wrapped function to enforce some functions that require admin rights to execute
@@ -258,6 +260,7 @@ def requires_admin(fxn):
             logging.info('Admin access granted to user "%s"', self.context['user']['name'])
             return fxn(*args, **kwargs)
         return ()
+
     return wrapped_fxn
 
 
@@ -289,16 +292,13 @@ class Chat(object):
         self.chunker = GZChunker(config=config)
 
         # API Admin Classes - used to execute API-driven actions
-        self.google_admin = GoogleAdmin(self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
-                                        self.config.GOOGLE_SUPER_ADMIN,
-                                        self.config.GOOGLE_CALENDAR_ID,
-                                        self.config.GOOGLE_WELCOME_TEXT,
-                                        self.config.GOOGLE_WELCOME_ATTACHMENTS)
-        self.trello_admin = TrelloAdmin(self.config.TRELLO_ORG,
-                                        self.config.TRELLO_API_KEY,
+        self.google_admin = GoogleAdmin(
+            self.config.GOOGLE_SERVICE_ACCOUNT_JSON, self.config.GOOGLE_SUPER_ADMIN,
+            self.config.GOOGLE_CALENDAR_ID, self.config.GOOGLE_WELCOME_TEXT,
+            self.config.GOOGLE_WELCOME_ATTACHMENTS)
+        self.trello_admin = TrelloAdmin(self.config.TRELLO_ORG, self.config.TRELLO_API_KEY,
                                         self.config.TRELLO_TOKEN)
-        self.github_admin = GitHubAdmin(self.config.GITHUB_ORG,
-                                        self.config.GITHUB_ACCESS_TOKEN)
+        self.github_admin = GitHubAdmin(self.config.GITHUB_ORG, self.config.GITHUB_ACCESS_TOKEN)
         self.abacus_admin = AbacusAdmin(self.config.ABACUS_ZAPIER_WEBHOOK)
 
         # Action state is a dictionary used for managing incomplete
@@ -349,20 +349,26 @@ class Chat(object):
                 if it was successful or not.
         """
         old_action_state = self.action_state.pop(self.context['user']['id'], {})
-        completed_dict = {'admin_action_complete': action_success and admin_required and self.context['admin']}
+        completed_dict = {
+            'admin_action_complete': action_success and admin_required and self.context['admin']
+        }
 
         message = 'I have done nothing.'
         completed_action = old_action_state.get('action')
         if action_success:
             message = 'At the bidding of my master ({}), '.format(self.context['user']['name'])
             if completed_action == 'create_google_account':
-                message += 'I have created a new Google Account for {person}.'.format(**old_action_state['kwargs'])
+                message += 'I have created a new Google Account for {person}.'.format(
+                    **old_action_state['kwargs'])
             elif completed_action == 'invite_to_trello':
-                message += 'I have invited {person} <{email}> to join our Trello organization.'.format(**old_action_state['kwargs'])
+                message += 'I have invited {person} <{email}> to join our Trello organization.'.format(
+                    **old_action_state['kwargs'])
             elif completed_action == 'invite_to_github':
-                message += 'I have invited {} to join our GitHub organization.'.format(old_action_state['kwargs']['username'])
+                message += 'I have invited {} to join our GitHub organization.'.format(
+                    old_action_state['kwargs']['username'])
             elif completed_action == 'invite_to_abacus':
-                message += 'I have invited <{email}> to join our Abacus organization.'.format(**old_action_state['kwargs'])
+                message += 'I have invited <{email}> to join our Abacus organization.'.format(
+                    **old_action_state['kwargs'])
             else:
                 message = 'Command completed.'
         else:
@@ -392,9 +398,15 @@ class Chat(object):
         """
         now = datetime.now(tzlocal())
         if context is None:
-            self.context = {'user': {'id': 'text', 'name': 'text',
-                                     'tz': now.tzname(), 'tz_offset': 0},
-                            'admin': True}
+            self.context = {
+                'user': {
+                    'id': 'text',
+                    'name': 'text',
+                    'tz': now.tzname(),
+                    'tz_offset': 0
+                },
+                'admin': True
+            }
         else:
             if 'user' not in context:
                 raise ValueError('Invalid message context. The "user" key is required.')
@@ -533,7 +545,7 @@ class Chat(object):
                 responses = getattr(self, action)(**kwargs)
         except BaseException:
             logging.exception("An error occurred responding to the user.")
-            responses = ('I... erm... what? Try again.',)
+            responses = ('I... erm... what? Try again.', )
         return responses
 
     #
@@ -582,8 +594,7 @@ class Chat(object):
                 yield "What is {}'s job title?".format(given_name)
         elif google_groups and self.config.GOOGLE_GROUPS['GDEV'] == google_groups:
             # Is a developer
-            self._set_action_state(step='dev_role',
-                                   regexp_tokenize=True)
+            self._set_action_state(step='dev_role', regexp_tokenize=True)
             yield ("I see we're adding a developer! What team will they be on? "
                    "Choose from: '{}'.".format("', '".join(self.config.GOOGLE_DEV_ROLES)))
         else:
@@ -591,16 +602,15 @@ class Chat(object):
             yield "Okay, let me check if '{}' is an available Google username.".format(username)
 
             if not self.google_admin.is_username_available(username):
-                self._set_action_state(step='username',
-                                       regexp_tokenize=True)
+                self._set_action_state(step='username', regexp_tokenize=True)
                 suggestion = (given_name[0] + family_name).lower()
                 yield ("Aw nuts, that name is taken. "
                        "Might I suggest a nickname or something like {}? "
                        "Either way, enter a new username for me to use.".format(suggestion))
             else:
                 yield "We're good to go! Creating the new account now."
-                responses = self.google_admin.create_user(given_name, family_name,
-                                                          username, email, job_title, google_groups)
+                responses = self.google_admin.create_user(given_name, family_name, username, email,
+                                                          job_title, google_groups)
                 for response in responses:
                     yield response
                 yield "Google account creation complete! What's next?"
@@ -624,11 +634,13 @@ class Chat(object):
                 yield "What is the user's full name?"
             else:
                 self._set_action_state(step='email')
-                yield "What is {}'s {} email address?".format(name, self.google_admin.primary_domain)
+                yield "What is {}'s {} email address?".format(name,
+                                                              self.google_admin.primary_domain)
         else:
             success = self.trello_admin.invite_to_trello(email, name)
             if success:
-                yield "I have invited {} to join *{}* in Trello!".format(email, self.trello_admin.trello_org)
+                yield "I have invited {} to join *{}* in Trello!".format(
+                    email, self.trello_admin.trello_org)
             else:
                 yield "Huh, that didn't work, check out the logs?"
             yield self._clear_action_state(success, admin_required=True)
@@ -648,8 +660,7 @@ class Chat(object):
             self._set_action_state(step='username', regexp_tokenize=True)
             yield "What is the GitHub username?"
         elif not dev_role:
-            self._set_action_state(step='dev_role',
-                                   regexp_tokenize=True)
+            self._set_action_state(step='dev_role', regexp_tokenize=True)
             yield ("What will be the user's dev role on our team? "
                    "Choose from: '{}'.".format("', '".join(self.config.GITHUB_DEV_ROLES.keys())))
         else:
@@ -673,7 +684,8 @@ class Chat(object):
 
         if not email:
             self._set_action_state(step='email')
-            yield "What is the new user's {} email address?".format(self.google_admin.primary_domain)
+            yield "What is the new user's {} email address?".format(
+                self.google_admin.primary_domain)
         else:
             success = self.abacus_admin.invite_to_abacus(email)
             if success:
@@ -696,5 +708,6 @@ class Chat(object):
             rand_index = random.choice(range(0, 24))
             yield response['data'][rand_index]['images']['downsized']['url']
         yield self._clear_action_state(action_success=True)
+
 
 # == END of Chat ===

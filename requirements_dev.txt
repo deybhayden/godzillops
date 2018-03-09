@@ -11,3 +11,4 @@ pylint
 pudb
 pycodestyle
 nose
+yapf

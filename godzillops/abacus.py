@@ -16,6 +16,7 @@ class AbacusAdmin(object):
     This class takes a single configuration piece - zapier webhook - and
     returns a class instance capable of doing basic Abacus member management.
     """
+
     def __init__(self, zapier_webhook):
         """Initialize Abacus API Interface
 
@@ -30,8 +31,11 @@ class AbacusAdmin(object):
     def invite_to_abacus(self, email):
         success = False
         data = json.dumps({'email': email}).encode()
-        req = urlreq.Request(url=self.zapier_webhook, data=data, method='POST',
-                             headers={'Content-Type': 'application/json'})
+        req = urlreq.Request(
+            url=self.zapier_webhook,
+            data=data,
+            method='POST',
+            headers={'Content-Type': 'application/json'})
         with urlreq.urlopen(req) as f:
             logging.info('Invite to Abacus URL Request Status - {}'.format(f.status))
             success = f.status == 200

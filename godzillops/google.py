@@ -35,11 +35,12 @@ from oauth2client.service_account import ServiceAccountCredentials
 GOOGLE_GROUP_TAGS = ('GDEV', 'GDES', 'GCRE', 'GFOU')
 PASSWORD_CHARACTERS = string.ascii_letters + string.punctuation + string.digits
 PASSWORD_LENGTH = 18
-SCOPES = ['https://www.googleapis.com/auth/admin.directory.domain.readonly',
-          'https://www.googleapis.com/auth/admin.directory.user',
-          'https://www.googleapis.com/auth/admin.directory.group',
-          'https://www.googleapis.com/auth/gmail.send',
-          'https://www.googleapis.com/auth/calendar']
+SCOPES = [
+    'https://www.googleapis.com/auth/admin.directory.domain.readonly',
+    'https://www.googleapis.com/auth/admin.directory.user',
+    'https://www.googleapis.com/auth/admin.directory.group',
+    'https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/calendar'
+]
 
 
 class GoogleAdmin(object):
@@ -48,7 +49,9 @@ class GoogleAdmin(object):
     This class takes a couple configuration pieces - service account keys & super admin account - and
     returns a class instance capable of doing basic google user management.
     """
-    def __init__(self, service_account_json, sub_account, calendar_id, welcome_text, welcome_attachments):
+
+    def __init__(self, service_account_json, sub_account, calendar_id, welcome_text,
+                 welcome_attachments):
         """Initialize Google API Service Interface
 
         Given a service account json object and super admin account email from Google Apps Domain,
@@ -61,7 +64,8 @@ class GoogleAdmin(object):
             welcome_text (str): Customizable welcome email text for each new account
             welcome_attachments (list): Customizable list of files to attach to welcome email
         """
-        credentials = ServiceAccountCredentials._from_parsed_json_keyfile(service_account_json, SCOPES)
+        credentials = ServiceAccountCredentials._from_parsed_json_keyfile(
+            service_account_json, SCOPES)
         delegated_creds = credentials.create_delegated(sub_account)
         http = delegated_creds.authorize(Http())
         self.sub_account = sub_account
@@ -85,37 +89,52 @@ class GoogleAdmin(object):
             groups (list): List of google group names determined by GZChunker
         """
         email = '{}@{}'.format(username, self.primary_domain)
-        emails = [{'address': email, 'primary': True, 'type': 'work'},
-                  {'address': personal_email, 'type': 'other'}]
+        emails = [{
+            'address': email,
+            'primary': True,
+            'type': 'work'
+        }, {
+            'address': personal_email,
+            'type': 'other'
+        }]
         orgs = [{'primary': True, 'title': job_title}]
         password = self._generate_password()
 
         logging.info("Creating new google account - {}".format(email))
-        response = (self.admin_service.users()
-                                      .insert(body={'name': {'givenName': given_name,
-                                                             'familyName': family_name},
-                                                    'password': password,
-                                                    'changePasswordAtNextLogin': True,
-                                                    'primaryEmail': email,
-                                                    'emails': emails,
-                                                    'organizations': orgs})
-                                      .execute())
+        response = (self.admin_service.users().insert(
+            body={
+                'name': {
+                    'givenName': given_name,
+                    'familyName': family_name
+                },
+                'password': password,
+                'changePasswordAtNextLogin': True,
+                'primaryEmail': email,
+                'emails': emails,
+                'organizations': orgs
+            }).execute())
 
-        yield 'User created! Going to add them to the following groups now: *{}*'.format(', '.join(groups))
+        yield 'User created! Going to add them to the following groups now: *{}*'.format(
+            ', '.join(groups))
         for group in groups:
             group_key = '{}@{}'.format(group, self.primary_domain)
             logging.info("Adding {} to the '{}' group".format(email, group_key))
-            (self.admin_service.members()
-                               .insert(groupKey=group_key,
-                                       body={'email': email,
-                                             'role': 'MEMBER'})
-                               .execute())
+            (self.admin_service.members().insert(
+                groupKey=group_key, body={
+                    'email': email,
+                    'role': 'MEMBER'
+                }).execute())
 
         logging.info("Adding {} to the '{}' calendar".format(email, self.calendar_id))
-        (self.cal_service.acl().insert(calendarId=self.calendar_id,
-                                       body={'role': 'reader',
-                                             'scope': {'type': 'user', 'value': email}})
-                               .execute())
+        (self.cal_service.acl().insert(
+            calendarId=self.calendar_id,
+            body={
+                'role': 'reader',
+                'scope': {
+                    'type': 'user',
+                    'value': email
+                }
+            }).execute())
 
         yield 'Sending them a welcome email to their personal address with login credentials to the new account.'
         logging.info('Emailing {} the credentials of the new google account'.format(given_name))
@@ -132,9 +151,11 @@ Password
 {password}
 
 Start using your new account by signing in at https://www.google.com/accounts/AccountChooser?Email={email}&continue=https://apps.google.com/user/hub
-{welcome_text}""".format(domain=self.primary_domain, welcome_text=self.welcome_text, **locals())
+{welcome_text}""".format(
+            domain=self.primary_domain, welcome_text=self.welcome_text, **locals())
 
-        message = self._create_message(personal_email, 'Welcome to {}'.format(self.primary_domain), message_text, self.welcome_attachments)
+        message = self._create_message(personal_email, 'Welcome to {}'.format(self.primary_domain),
+                                       message_text, self.welcome_attachments)
         # Send message as super admin
         self.send_message('me', message)
 
@@ -196,10 +217,8 @@ Start using your new account by signing in at https://www.google.com/accounts/Ac
         Returns:
           Sent Message.
         """
-        message = (self.gmail_service.users().messages()
-                                     .send(userId=user_id,
-                                           body=message)
-                                     .execute())
+        message = (self.gmail_service.users().messages().send(userId=user_id, body=message)
+                   .execute())
         logging.info('Sent Message Id: {}'.format(message['id']))
         return message
 
@@ -227,8 +246,7 @@ Start using your new account by signing in at https://www.google.com/accounts/Ac
         Returns:
             str: A randomly generated password.
         """
-        return ''.join(random.choice(PASSWORD_CHARACTERS)
-                       for _ in range(PASSWORD_LENGTH))
+        return ''.join(random.choice(PASSWORD_CHARACTERS) for _ in range(PASSWORD_LENGTH))
 
     def _get_primary_domain(self):
         """Get the primary domain for this Google Account.
@@ -236,8 +254,6 @@ Start using your new account by signing in at https://www.google.com/accounts/Ac
         Returns:
             str: The primary domain of the google account.
         """
-        domains = (self.admin_service.domains()
-                                     .list(customer='my_customer')
-                                     .execute())['domains']
-        (primary_domain,) = [d['domainName'] for d in domains if d['isPrimary']]
+        domains = (self.admin_service.domains().list(customer='my_customer').execute())['domains']
+        (primary_domain, ) = [d['domainName'] for d in domains if d['isPrimary']]
         return primary_domain
