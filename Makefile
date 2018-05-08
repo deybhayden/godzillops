@@ -87,7 +87,7 @@ dist: clean
 	ls -l dist
 
 install: clean
-	pyenv virtualenv 3.4.3 godzillops
+	pyenv virtualenv 3.6.5 godzillops
 	python setup.py install
 	python -m nltk.downloader brown
 
