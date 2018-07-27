@@ -30,13 +30,14 @@ class AbacusAdmin(object):
 
     def invite_to_abacus(self, email):
         success = False
-        data = json.dumps({'email': email}).encode()
+        data = json.dumps({"email": email}).encode()
         req = urlreq.Request(
             url=self.zapier_webhook,
             data=data,
-            method='POST',
-            headers={'Content-Type': 'application/json'})
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
         with urlreq.urlopen(req) as f:
-            logging.info('Invite to Abacus URL Request Status - {}'.format(f.status))
+            logging.info("Invite to Abacus URL Request Status - {}".format(f.status))
             success = f.status == 200
         return success

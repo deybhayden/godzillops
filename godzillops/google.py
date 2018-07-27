@@ -32,14 +32,15 @@ from apiclient.discovery import build
 from httplib2 import Http
 from oauth2client.service_account import ServiceAccountCredentials
 
-GOOGLE_GROUP_TAGS = ('GDEV', 'GDES', 'GCRE', 'GFOU')
+GOOGLE_GROUP_TAGS = ("GDEV", "GDES", "GCRE", "GFOU")
 PASSWORD_CHARACTERS = string.ascii_letters + string.punctuation + string.digits
 PASSWORD_LENGTH = 18
 SCOPES = [
-    'https://www.googleapis.com/auth/admin.directory.domain.readonly',
-    'https://www.googleapis.com/auth/admin.directory.user',
-    'https://www.googleapis.com/auth/admin.directory.group',
-    'https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/calendar'
+    "https://www.googleapis.com/auth/admin.directory.domain.readonly",
+    "https://www.googleapis.com/auth/admin.directory.user",
+    "https://www.googleapis.com/auth/admin.directory.group",
+    "https://www.googleapis.com/auth/gmail.send",
+    "https://www.googleapis.com/auth/calendar",
 ]
 
 
@@ -50,8 +51,9 @@ class GoogleAdmin(object):
     returns a class instance capable of doing basic google user management.
     """
 
-    def __init__(self, service_account_json, sub_account, calendar_id, welcome_text,
-                 welcome_attachments):
+    def __init__(
+        self, service_account_json, sub_account, calendar_id, welcome_text, welcome_attachments
+    ):
         """Initialize Google API Service Interface
 
         Given a service account json object and super admin account email from Google Apps Domain,
@@ -65,14 +67,15 @@ class GoogleAdmin(object):
             welcome_attachments (list): Customizable list of files to attach to welcome email
         """
         credentials = ServiceAccountCredentials._from_parsed_json_keyfile(
-            service_account_json, SCOPES)
+            service_account_json, SCOPES
+        )
         delegated_creds = credentials.create_delegated(sub_account)
         http = delegated_creds.authorize(Http())
         self.sub_account = sub_account
         self.calendar_id = calendar_id
-        self.admin_service = build('admin', 'directory_v1', http=http)
-        self.gmail_service = build('gmail', 'v1', http=http)
-        self.cal_service = build('calendar', 'v3', http=http)
+        self.admin_service = build("admin", "directory_v1", http=http)
+        self.gmail_service = build("gmail", "v1", http=http)
+        self.cal_service = build("calendar", "v3", http=http)
         self.primary_domain = self._get_primary_domain()
         self.welcome_text = welcome_text
         self.welcome_attachments = welcome_attachments
@@ -88,56 +91,54 @@ class GoogleAdmin(object):
             job_title (str): Job title of new user
             groups (list): List of google group names determined by GZChunker
         """
-        email = '{}@{}'.format(username, self.primary_domain)
-        emails = [{
-            'address': email,
-            'primary': True,
-            'type': 'work'
-        }, {
-            'address': personal_email,
-            'type': 'other'
-        }]
-        orgs = [{'primary': True, 'title': job_title}]
+        email = "{}@{}".format(username, self.primary_domain)
+        emails = [
+            {"address": email, "primary": True, "type": "work"},
+            {"address": personal_email, "type": "other"},
+        ]
+        orgs = [{"primary": True, "title": job_title}]
         password = self._generate_password()
 
         logging.info("Creating new google account - {}".format(email))
-        response = (self.admin_service.users().insert(
-            body={
-                'name': {
-                    'givenName': given_name,
-                    'familyName': family_name
-                },
-                'password': password,
-                'changePasswordAtNextLogin': True,
-                'primaryEmail': email,
-                'emails': emails,
-                'organizations': orgs
-            }).execute())
+        response = (
+            self.admin_service.users()
+            .insert(
+                body={
+                    "name": {"givenName": given_name, "familyName": family_name},
+                    "password": password,
+                    "changePasswordAtNextLogin": True,
+                    "primaryEmail": email,
+                    "emails": emails,
+                    "organizations": orgs,
+                }
+            )
+            .execute()
+        )
 
-        yield 'User created! Going to add them to the following groups now: *{}*'.format(
-            ', '.join(groups))
+        yield "User created! Going to add them to the following groups now: *{}*".format(
+            ", ".join(groups)
+        )
         for group in groups:
-            group_key = '{}@{}'.format(group, self.primary_domain)
+            group_key = "{}@{}".format(group, self.primary_domain)
             logging.info("Adding {} to the '{}' group".format(email, group_key))
-            (self.admin_service.members().insert(
-                groupKey=group_key, body={
-                    'email': email,
-                    'role': 'MEMBER'
-                }).execute())
+            (
+                self.admin_service.members()
+                .insert(groupKey=group_key, body={"email": email, "role": "MEMBER"})
+                .execute()
+            )
 
         logging.info("Adding {} to the '{}' calendar".format(email, self.calendar_id))
-        (self.cal_service.acl().insert(
-            calendarId=self.calendar_id,
-            body={
-                'role': 'reader',
-                'scope': {
-                    'type': 'user',
-                    'value': email
-                }
-            }).execute())
+        (
+            self.cal_service.acl()
+            .insert(
+                calendarId=self.calendar_id,
+                body={"role": "reader", "scope": {"type": "user", "value": email}},
+            )
+            .execute()
+        )
 
-        yield 'Sending them a welcome email to their personal address with login credentials to the new account.'
-        logging.info('Emailing {} the credentials of the new google account'.format(given_name))
+        yield "Sending them a welcome email to their personal address with login credentials to the new account."
+        logging.info("Emailing {} the credentials of the new google account".format(given_name))
         message_text = """
 Hello {given_name},
 
@@ -152,12 +153,17 @@ Password
 
 Start using your new account by signing in at https://www.google.com/accounts/AccountChooser?Email={email}&continue=https://apps.google.com/user/hub
 {welcome_text}""".format(
-            domain=self.primary_domain, welcome_text=self.welcome_text, **locals())
+            domain=self.primary_domain, welcome_text=self.welcome_text, **locals()
+        )
 
-        message = self._create_message(personal_email, 'Welcome to {}'.format(self.primary_domain),
-                                       message_text, self.welcome_attachments)
+        message = self._create_message(
+            personal_email,
+            "Welcome to {}".format(self.primary_domain),
+            message_text,
+            self.welcome_attachments,
+        )
         # Send message as super admin
-        self.send_message('me', message)
+        self.send_message("me", message)
 
     def _create_message(self, to, subject, message_text, message_attachments):
         """Create a message for an email.
@@ -172,9 +178,9 @@ Start using your new account by signing in at https://www.google.com/accounts/Ac
             An object containing a base64url encoded email object.
         """
         message = MIMEMultipart()
-        message['to'] = to
-        message['from'] = self.sub_account
-        message['subject'] = subject
+        message["to"] = to
+        message["from"] = self.sub_account
+        message["subject"] = subject
 
         msg = MIMEText(message_text)
         message.attach(msg)
@@ -182,29 +188,29 @@ Start using your new account by signing in at https://www.google.com/accounts/Ac
         for attachment in message_attachments:
             content_type, encoding = mimetypes.guess_type(attachment)
             if content_type is None or encoding is not None:
-                content_type = 'application/octet-stream'
+                content_type = "application/octet-stream"
 
-            main_type, sub_type = content_type.split('/', 1)
-            if main_type == 'text':
-                with open(attachment, 'rb') as fp:
+            main_type, sub_type = content_type.split("/", 1)
+            if main_type == "text":
+                with open(attachment, "rb") as fp:
                     msg = MIMEText(fp.read(), _subtype=sub_type)
-            elif main_type == 'image':
-                with open(attachment, 'rb') as fp:
+            elif main_type == "image":
+                with open(attachment, "rb") as fp:
                     msg = MIMEImage(fp.read(), _subtype=sub_type)
-            elif main_type == 'audio':
-                with open(attachment, 'rb') as fp:
+            elif main_type == "audio":
+                with open(attachment, "rb") as fp:
                     msg = MIMEAudio(fp.read(), _subtype=sub_type)
             else:
-                with open(attachment, 'rb') as fp:
+                with open(attachment, "rb") as fp:
                     msg = MIMEBase(main_type, sub_type)
                     msg.set_payload(fp.read())
 
             encode_base64(msg)
             filename = os.path.basename(attachment)
-            msg.add_header('Content-Disposition', 'attachment', filename=filename)
+            msg.add_header("Content-Disposition", "attachment", filename=filename)
             message.attach(msg)
 
-        return {'raw': base64.urlsafe_b64encode(message.as_bytes()).decode()}
+        return {"raw": base64.urlsafe_b64encode(message.as_bytes()).decode()}
 
     def send_message(self, user_id, message):
         """Send an email message.
@@ -217,9 +223,8 @@ Start using your new account by signing in at https://www.google.com/accounts/Ac
         Returns:
           Sent Message.
         """
-        message = (self.gmail_service.users().messages().send(userId=user_id, body=message)
-                   .execute())
-        logging.info('Sent Message Id: {}'.format(message['id']))
+        message = self.gmail_service.users().messages().send(userId=user_id, body=message).execute()
+        logging.info("Sent Message Id: {}".format(message["id"]))
         return message
 
     def is_username_available(self, username):
@@ -231,7 +236,7 @@ Start using your new account by signing in at https://www.google.com/accounts/Ac
         Returns:
             bool: If the name is available, return True, False otherwise
         """
-        email = '{}@{}'.format(username, self.primary_domain)
+        email = "{}@{}".format(username, self.primary_domain)
         try:
             self.admin_service.users().get(userKey=email).execute()
             # Executed without error, meaning this user already exists
@@ -246,7 +251,7 @@ Start using your new account by signing in at https://www.google.com/accounts/Ac
         Returns:
             str: A randomly generated password.
         """
-        return ''.join(random.choice(PASSWORD_CHARACTERS) for _ in range(PASSWORD_LENGTH))
+        return "".join(random.choice(PASSWORD_CHARACTERS) for _ in range(PASSWORD_LENGTH))
 
     def _get_primary_domain(self):
         """Get the primary domain for this Google Account.
@@ -254,6 +259,6 @@ Start using your new account by signing in at https://www.google.com/accounts/Ac
         Returns:
             str: The primary domain of the google account.
         """
-        domains = (self.admin_service.domains().list(customer='my_customer').execute())['domains']
-        (primary_domain, ) = [d['domainName'] for d in domains if d['isPrimary']]
+        domains = (self.admin_service.domains().list(customer="my_customer").execute())["domains"]
+        (primary_domain,) = [d["domainName"] for d in domains if d["isPrimary"]]
         return primary_domain

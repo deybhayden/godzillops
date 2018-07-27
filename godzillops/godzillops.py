@@ -40,15 +40,15 @@ def _generate_in_dict(action_state):
             how to chunk the tagged sentence into meaningful pieces.
     """
     in_dict = defaultdict(bool)
-    action = action_state.get('action') or ''
+    action = action_state.get("action") or ""
 
-    if action == 'create_google_account':
-        in_dict['create_action'] = True
-        in_dict['create_google_account'] = True
-        if action_state['step'] == 'title':
-            in_dict['check_for_title'] = True
-    elif action.startswith('invite_to'):
-        in_dict['invite_action'] = True
+    if action == "create_google_account":
+        in_dict["create_action"] = True
+        in_dict["create_google_account"] = True
+        if action_state["step"] == "title":
+            in_dict["check_for_title"] = True
+    elif action.startswith("invite_to"):
+        in_dict["invite_action"] = True
         in_dict[action] = True
 
     return in_dict
@@ -62,18 +62,18 @@ class GZChunker(nltk.chunk.ChunkParserI):
     """
 
     # These sets are mini-corpora for checking input and determining intent
-    create_actions = {'create', 'add', 'generate', 'make'}
-    invite_actions = {'add', 'invite'}
-    dev_titles = {'data', 'scientist', 'software', 'developer', 'engineer', 'coder', 'programmer'}
-    design_titles = {'designer', 'ux', 'product', 'graphic'}
-    founder_titles = {'founder', 'ceo', 'cto', 'gm', 'general', 'manager'}
-    creative_titles = {'content', 'creative'}
-    greetings = {'hey', 'hello', 'sup', 'greetings', 'hi', 'yo', 'howdy'}
-    gz_aliases = {'godzillops', 'godzilla', 'gojira', 'gz'}
-    cancel_actions = {'stop', 'cancel', 'nevermind', 'quit', 'nvm'}
-    yes = {'yes', 'yeah', 'yep', 'yup', 'sure'}
-    no = {'no', 'nope', 'nah'}
-    email_regexp = re.compile(r'[^@]+@[^@]+\.[^@]+', re.IGNORECASE)
+    create_actions = {"create", "add", "generate", "make"}
+    invite_actions = {"add", "invite"}
+    dev_titles = {"data", "scientist", "software", "developer", "engineer", "coder", "programmer"}
+    design_titles = {"designer", "ux", "product", "graphic"}
+    founder_titles = {"founder", "ceo", "cto", "gm", "general", "manager"}
+    creative_titles = {"content", "creative"}
+    greetings = {"hey", "hello", "sup", "greetings", "hi", "yo", "howdy"}
+    gz_aliases = {"godzillops", "godzilla", "gojira", "gz"}
+    cancel_actions = {"stop", "cancel", "nevermind", "quit", "nvm"}
+    yes = {"yes", "yeah", "yep", "yup", "sure"}
+    no = {"no", "nope", "nah"}
+    email_regexp = re.compile(r"[^@]+@[^@]+\.[^@]+", re.IGNORECASE)
 
     def __init__(self, config):
         """Initialize the GZChunker class and any members that need to be created at runtime.
@@ -109,81 +109,84 @@ class GZChunker(nltk.chunk.ChunkParserI):
             lword = word.lower()
             # They said our name!
             if lword in self.gz_aliases:
-                iobs.append((word, tag, 'B-GODZILLA'))
+                iobs.append((word, tag, "B-GODZILLA"))
             # They said hello!
             elif lword in self.greetings:
-                iobs.append((word, tag, 'B-GREETING'))
+                iobs.append((word, tag, "B-GREETING"))
             # Named Entity Recognition - Find Emails
             elif self.email_regexp.match(lword):
                 # This is probably an email address
-                if lword.startswith('<mailto:') and lword.endswith('>'):
+                if lword.startswith("<mailto:") and lword.endswith(">"):
                     # Slack auto-formats email addresses like this:
                     # <mailto:hayden767@gmail.com|hayden767@gmail.com>
                     # Strip that before returning in parsed tree
-                    lword = lword.split('|')[-1][:-1]
-                if lword.startswith(('<mailto:', 'mailto:')):
+                    lword = lword.split("|")[-1][:-1]
+                if lword.startswith(("<mailto:", "mailto:")):
                     # Protect from copy paste
-                    lword = lword.split(':', 1)[1]
-                    if lword.endswith('>'):
+                    lword = lword.split(":", 1)[1]
+                    if lword.endswith(">"):
                         lword = lword[:-1]
-                iobs.append((lword, 'NN', 'B-EMAIL'))
+                iobs.append((lword, "NN", "B-EMAIL"))
             # Named Entity Recognition - Usernames
-            elif lword.startswith('@'):
+            elif lword.startswith("@"):
                 # Chunk as a username and lose the @ symbol
-                iobs.append((lword[1:], tag, 'B-USERNAME'))
+                iobs.append((lword[1:], tag, "B-USERNAME"))
             # CREATE ACTIONS
-            elif lword in self.create_actions and tag.startswith('VB'):
-                in_dict['create_action'] = True
+            elif lword in self.create_actions and tag.startswith("VB"):
+                in_dict["create_action"] = True
                 if lword in self.invite_actions:
                     # 'add' is shared by both, no harm (yet) in setting both
-                    in_dict['invite_action'] = True
-                iobs.append((word, tag, 'O'))
-            elif in_dict['create_action'] and lword == 'google':
-                in_dict['create_google_account'] = True
-                iobs.append((word, tag, 'B-CREATE_GOOGLE_ACCOUNT'))
-            elif in_dict['create_google_account'] and lword == 'title':
-                in_dict['check_for_title'] = True
-                in_dict['title'] = []
-                iobs.append((word, tag, 'O'))
-            elif in_dict['check_for_title']:
+                    in_dict["invite_action"] = True
+                iobs.append((word, tag, "O"))
+            elif in_dict["create_action"] and lword == "google":
+                in_dict["create_google_account"] = True
+                iobs.append((word, tag, "B-CREATE_GOOGLE_ACCOUNT"))
+            elif in_dict["create_google_account"] and lword == "title":
+                in_dict["check_for_title"] = True
+                in_dict["title"] = []
+                iobs.append((word, tag, "O"))
+            elif in_dict["check_for_title"]:
                 iobs.append(self._parse_job_title(in_dict, word, tag, lword))
             elif lword in self.config.GOOGLE_DEV_ROLES or lword in self.config.GITHUB_DEV_ROLES:
-                iobs.append((lword, tag, 'B-DEV_ROLE'))
+                iobs.append((lword, tag, "B-DEV_ROLE"))
             # INVITE ACTIONS
-            elif lword in self.invite_actions and tag.startswith('VB'):
-                in_dict['invite_action'] = True
-                iobs.append((word, tag, 'O'))
-            elif in_dict['invite_action'] and lword == 'trello':
-                in_dict['invite_to_trello'] = True
-                iobs.append((word, tag, 'B-INVITE_TO_TRELLO'))
-            elif in_dict['invite_action'] and lword == 'github':
-                in_dict['invite_to_github'] = True
-                iobs.append((word, tag, 'B-INVITE_TO_GITHUB'))
-            elif in_dict['invite_action'] and lword == 'abacus':
-                in_dict['invite_to_abacus'] = True
-                iobs.append((word, tag, 'B-INVITE_TO_ABACUS'))
+            elif lword in self.invite_actions and tag.startswith("VB"):
+                in_dict["invite_action"] = True
+                iobs.append((word, tag, "O"))
+            elif in_dict["invite_action"] and lword == "trello":
+                in_dict["invite_to_trello"] = True
+                iobs.append((word, tag, "B-INVITE_TO_TRELLO"))
+            elif in_dict["invite_action"] and lword == "github":
+                in_dict["invite_to_github"] = True
+                iobs.append((word, tag, "B-INVITE_TO_GITHUB"))
+            elif in_dict["invite_action"] and lword == "abacus":
+                in_dict["invite_to_abacus"] = True
+                iobs.append((word, tag, "B-INVITE_TO_ABACUS"))
             # CANCEL ACTION
-            elif lword in self.cancel_actions and (in_dict['create_action']
-                                                   or in_dict['invite_action']) and not iobs:
+            elif (
+                lword in self.cancel_actions
+                and (in_dict["create_action"] or in_dict["invite_action"])
+                and not iobs
+            ):
                 # Only recognize cancel action by itself, and return immediately
                 # when it is encountered
-                iobs.append((word, tag, 'B-CANCEL'))
+                iobs.append((word, tag, "B-CANCEL"))
                 break
             # Named Entity Recognition - Handle All Previously Unmatched Proper Nouns
-            elif tag.startswith('NP') or (in_dict['person'] and word[0].isupper()):
-                if in_dict['person']:
-                    iobs.append((word, tag, 'I-PERSON'))
+            elif tag.startswith("NP") or (in_dict["person"] and word[0].isupper()):
+                if in_dict["person"]:
+                    iobs.append((word, tag, "I-PERSON"))
                 else:
-                    iobs.append((word, tag, 'B-PERSON'))
-                    in_dict['person'] = True
+                    iobs.append((word, tag, "B-PERSON"))
+                    in_dict["person"] = True
             # For some odd reason, this name isn't getting tagged as a proper noun
-            elif in_dict['create_google_account'] and word[0].isupper():
-                iobs.append((word, tag, 'B-PERSON'))
-                in_dict['person'] = True
+            elif in_dict["create_google_account"] and word[0].isupper():
+                iobs.append((word, tag, "B-PERSON"))
+                in_dict["person"] = True
             # Just a word, tag it and move on
             else:
-                in_dict['person'] = False
-                iobs.append((word, tag, 'O'))
+                in_dict["person"] = False
+                iobs.append((word, tag, "O"))
 
         return nltk.chunk.conlltags2tree(iobs)
 
@@ -208,31 +211,36 @@ class GZChunker(nltk.chunk.ChunkParserI):
 
         # Use POS to capture possible google grouping
         if probably_dev:
-            job_title_tag = 'GDEV'
+            job_title_tag = "GDEV"
         elif probably_design:
-            job_title_tag = 'GDES'
+            job_title_tag = "GDES"
         elif probably_creative:
-            job_title_tag = 'GCRE'
+            job_title_tag = "GCRE"
         elif probably_founder:
-            job_title_tag = 'GFOU'
+            job_title_tag = "GFOU"
         else:
-            job_title_tag = 'NP'
+            job_title_tag = "NP"
 
-        probably_job_title = any([
-            probably_dev, probably_design, probably_creative, probably_founder,
-            tag.startswith('NP')
-        ])
+        probably_job_title = any(
+            [
+                probably_dev,
+                probably_design,
+                probably_creative,
+                probably_founder,
+                tag.startswith("NP"),
+            ]
+        )
 
-        if probably_job_title and in_dict['finding_title']:
-            return (word, job_title_tag, 'I-JOB_TITLE')
+        if probably_job_title and in_dict["finding_title"]:
+            return (word, job_title_tag, "I-JOB_TITLE")
         elif probably_job_title:
-            in_dict['finding_title'] = True
-            return (word, job_title_tag, 'B-JOB_TITLE')
-        elif 'finding_title' in in_dict:
-            del in_dict['finding_title']
-            del in_dict['check_for_title']
+            in_dict["finding_title"] = True
+            return (word, job_title_tag, "B-JOB_TITLE")
+        elif "finding_title" in in_dict:
+            del in_dict["finding_title"]
+            del in_dict["check_for_title"]
 
-        return (word, tag, 'O')
+        return (word, tag, "O")
 
 
 # == END of GZChunker ===
@@ -256,8 +264,8 @@ def requires_admin(fxn):
         Wrapped function to enforce some functions that require admin rights to execute
         """
         self = args[0]
-        if self.context['admin']:
-            logging.info('Admin access granted to user "%s"', self.context['user']['name'])
+        if self.context["admin"]:
+            logging.info('Admin access granted to user "%s"', self.context["user"]["name"])
             return fxn(*args, **kwargs)
         return ()
 
@@ -284,20 +292,24 @@ class Chat(object):
         # chatting with - user name, admin, and timezone information
         self.context = {}
 
-        logging.debug('Initialize Tokenizer')
+        logging.debug("Initialize Tokenizer")
         self.tokenizer = TweetTokenizer()
-        logging.debug('Initialize Tagger')
+        logging.debug("Initialize Tagger")
         self._create_tagger()
-        logging.debug('Initialize Chunker')
+        logging.debug("Initialize Chunker")
         self.chunker = GZChunker(config=config)
 
         # API Admin Classes - used to execute API-driven actions
         self.google_admin = GoogleAdmin(
-            self.config.GOOGLE_SERVICE_ACCOUNT_JSON, self.config.GOOGLE_SUPER_ADMIN,
-            self.config.GOOGLE_CALENDAR_ID, self.config.GOOGLE_WELCOME_TEXT,
-            self.config.GOOGLE_WELCOME_ATTACHMENTS)
-        self.trello_admin = TrelloAdmin(self.config.TRELLO_ORG, self.config.TRELLO_API_KEY,
-                                        self.config.TRELLO_TOKEN)
+            self.config.GOOGLE_SERVICE_ACCOUNT_JSON,
+            self.config.GOOGLE_SUPER_ADMIN,
+            self.config.GOOGLE_CALENDAR_ID,
+            self.config.GOOGLE_WELCOME_TEXT,
+            self.config.GOOGLE_WELCOME_ATTACHMENTS,
+        )
+        self.trello_admin = TrelloAdmin(
+            self.config.TRELLO_ORG, self.config.TRELLO_API_KEY, self.config.TRELLO_TOKEN
+        )
         self.github_admin = GitHubAdmin(self.config.GITHUB_ORG, self.config.GITHUB_ACCESS_TOKEN)
         self.abacus_admin = AbacusAdmin(self.config.ABACUS_ZAPIER_WEBHOOK)
 
@@ -325,8 +337,8 @@ class Chat(object):
             with open('tagger.pickle', 'wb') as tagger_pickle:
                 pickle.dump(self.tagger, tagger_pickle)
         """
-        tagger_path = os.path.join(os.path.dirname(__file__), 'tagger.pickle')
-        with open(tagger_path, 'rb') as tagger_pickle:
+        tagger_path = os.path.join(os.path.dirname(__file__), "tagger.pickle")
+        with open(tagger_path, "rb") as tagger_pickle:
             self.tagger = pickle.load(tagger_pickle)
             logging.debug("tagger.pickle loaded from cache")
 
@@ -348,41 +360,45 @@ class Chat(object):
             dict: A dictionary representing information about the completed action and
                 if it was successful or not.
         """
-        old_action_state = self.action_state.pop(self.context['user']['id'], {})
+        old_action_state = self.action_state.pop(self.context["user"]["id"], {})
         completed_dict = {
-            'admin_action_complete': action_success and admin_required and self.context['admin']
+            "admin_action_complete": action_success and admin_required and self.context["admin"]
         }
 
-        message = 'I have done nothing.'
-        completed_action = old_action_state.get('action')
+        message = "I have done nothing."
+        completed_action = old_action_state.get("action")
         if action_success:
-            message = 'At the bidding of my master ({}), '.format(self.context['user']['name'])
-            if completed_action == 'create_google_account':
-                message += 'I have created a new Google Account for {person}.'.format(
-                    **old_action_state['kwargs'])
-            elif completed_action == 'invite_to_trello':
-                message += 'I have invited {person} <{email}> to join our Trello organization.'.format(
-                    **old_action_state['kwargs'])
-            elif completed_action == 'invite_to_github':
-                message += 'I have invited {} to join our GitHub organization.'.format(
-                    old_action_state['kwargs']['username'])
-            elif completed_action == 'invite_to_abacus':
-                message += 'I have invited <{email}> to join our Abacus organization.'.format(
-                    **old_action_state['kwargs'])
+            message = "At the bidding of my master ({}), ".format(self.context["user"]["name"])
+            if completed_action == "create_google_account":
+                message += "I have created a new Google Account for {person}.".format(
+                    **old_action_state["kwargs"]
+                )
+            elif completed_action == "invite_to_trello":
+                message += "I have invited {person} <{email}> to join our Trello organization.".format(
+                    **old_action_state["kwargs"]
+                )
+            elif completed_action == "invite_to_github":
+                message += "I have invited {} to join our GitHub organization.".format(
+                    old_action_state["kwargs"]["username"]
+                )
+            elif completed_action == "invite_to_abacus":
+                message += "I have invited <{email}> to join our Abacus organization.".format(
+                    **old_action_state["kwargs"]
+                )
             else:
-                message = 'Command completed.'
+                message = "Command completed."
         else:
-            message = 'I have failed you.'
+            message = "I have failed you."
 
-        completed_dict['message'] = message
+        completed_dict["message"] = message
         return completed_dict
 
     def _get_action_state(self):
-        return self.action_state.get(self.context['user']['id'], {})
+        return self.action_state.get(self.context["user"]["id"], {})
 
     def _set_action_state(self, **action_state):
-        self.action_state.setdefault(self.context['user']['id'], {})
-        self.action_state[self.context['user']['id']].update(action_state)
+        self.action_state.setdefault(self.context["user"]["id"], {})
+        self.action_state[self.context["user"]["id"]].update(action_state)
 
     def _set_context(self, context):
         """Set the message context dictionary.
@@ -399,23 +415,18 @@ class Chat(object):
         now = datetime.now(tzlocal())
         if context is None:
             self.context = {
-                'user': {
-                    'id': 'text',
-                    'name': 'text',
-                    'tz': now.tzname(),
-                    'tz_offset': 0
-                },
-                'admin': True
+                "user": {"id": "text", "name": "text", "tz": now.tzname(), "tz_offset": 0},
+                "admin": True,
             }
         else:
-            if 'user' not in context:
+            if "user" not in context:
                 raise ValueError('Invalid message context. The "user" key is required.')
             self.context = context
-            self.context['admin'] = self.context['user']['id'] in self.config.ADMINS
+            self.context["admin"] = self.context["user"]["id"] in self.config.ADMINS
 
         # Use the time that the chat instance is running
         # with for future date time math
-        self.context['gz_timestamp'] = now
+        self.context["gz_timestamp"] = now
 
     #
     # DETERMINE ACTION AND RESPOND
@@ -438,16 +449,16 @@ class Chat(object):
                 kwargs (dict): Dynamic keyword arguments passed to each action function.
         """
         logging.debug(chunked_text)
-        action = action_state.get('action')
-        kwargs = action_state.get('kwargs', {})
+        action = action_state.get("action")
+        kwargs = action_state.get("kwargs", {})
 
-        if action == 'create_google_account' and action_state['step'] == 'username':
+        if action == "create_google_account" and action_state["step"] == "username":
             # Short circuit subtree parsing, and treat first leaf as a username
-            kwargs['username'], _ = chunked_text.leaves()[0]
+            kwargs["username"], _ = chunked_text.leaves()[0]
             return action, kwargs
-        elif action == 'invite_to_github' and action_state['step'] == 'username':
+        elif action == "invite_to_github" and action_state["step"] == "username":
             # Short circuit subtree parsing, and treat all leaves as username
-            kwargs['username'], _ = chunked_text.leaves()[0]
+            kwargs["username"], _ = chunked_text.leaves()[0]
             return action, kwargs
 
         # Used to store named entities
@@ -455,17 +466,17 @@ class Chat(object):
 
         for subtree in chunked_text.subtrees():
             label = subtree.label()
-            if label == 'GREETING':
+            if label == "GREETING":
                 # Default to say hi, if they did - will probably be overridden
-                action = 'greet'
-            elif label == 'GODZILLA' and not action:
+                action = "greet"
+            elif label == "GODZILLA" and not action:
                 # Return a gif if they didn't say anything but our name
-                action = 'gz_gif'
-            elif label.startswith(('CREATE_', 'INVITE_')):
+                action = "gz_gif"
+            elif label.startswith(("CREATE_", "INVITE_")):
                 action = label.lower()
-            elif label in ('EMAIL', 'PERSON', 'USERNAME', 'DEV_ROLE'):
-                entity_dict[label].append(' '.join(l[0] for l in subtree.leaves()))
-            elif label in 'JOB_TITLE':
+            elif label in ("EMAIL", "PERSON", "USERNAME", "DEV_ROLE"):
+                entity_dict[label].append(" ".join(l[0] for l in subtree.leaves()))
+            elif label in "JOB_TITLE":
                 # Store Full title name, and decide Google Groups based on custom POS tags
                 job_title = []
                 group_check = defaultdict(bool)
@@ -473,30 +484,30 @@ class Chat(object):
                     job_title.append(l[0])
                     for gtag in GOOGLE_GROUP_TAGS:
                         group_check[gtag] = l[1] == gtag
-                entity_dict[label].append(' '.join(job_title))
+                entity_dict[label].append(" ".join(job_title))
 
                 # Rather sure on google groups to add user to since all title
                 # pieces were categorizable by dev, design, or multimedia title corpus
                 for glabel in GOOGLE_GROUP_TAGS:
                     if group_check[glabel]:
-                        entity_dict['GOOGLE_GROUPS'] += self.config.GOOGLE_GROUPS[glabel]
-            elif label == 'CANCEL' and action_state['action']:
+                        entity_dict["GOOGLE_GROUPS"] += self.config.GOOGLE_GROUPS[glabel]
+            elif label == "CANCEL" and action_state["action"]:
                 # Only set cancel if in a previous action
-                action = 'cancel'
+                action = "cancel"
 
-        if action != 'cancel':
+        if action != "cancel":
             # Prepare New Kwarg Values for selected action
-            for label in ('JOB_TITLE', 'PERSON', 'EMAIL', 'USERNAME'):
+            for label in ("JOB_TITLE", "PERSON", "EMAIL", "USERNAME"):
                 if entity_dict[label]:
                     kwargs[label.lower()] = entity_dict[label][0]
-            if entity_dict['GOOGLE_GROUPS']:
-                kwargs['google_groups'] = entity_dict['GOOGLE_GROUPS']
+            if entity_dict["GOOGLE_GROUPS"]:
+                kwargs["google_groups"] = entity_dict["GOOGLE_GROUPS"]
 
-            if entity_dict['DEV_ROLE']:
-                if 'google_groups' in kwargs:
-                    kwargs['google_groups'] += entity_dict['DEV_ROLE']
+            if entity_dict["DEV_ROLE"]:
+                if "google_groups" in kwargs:
+                    kwargs["google_groups"] += entity_dict["DEV_ROLE"]
                 else:
-                    kwargs['dev_role'] = entity_dict['DEV_ROLE'][0]
+                    kwargs["dev_role"] = entity_dict["DEV_ROLE"][0]
 
         # Update current action state with determined course of action
         self._set_action_state(action=action, kwargs=kwargs)
@@ -525,7 +536,7 @@ class Chat(object):
             action_state = self._get_action_state()
 
             # Tokenize raw _input
-            if action_state.get('regexp_tokenize'):
+            if action_state.get("regexp_tokenize"):
                 # Use simple alphanumeric Regex - used in some actions
                 tokens = nltk.regexp_tokenize(_input, r"[\w]+")
             else:
@@ -545,7 +556,7 @@ class Chat(object):
                 responses = getattr(self, action)(**kwargs)
         except BaseException:
             logging.exception("An error occurred responding to the user.")
-            responses = ('I... erm... what? Try again.', )
+            responses = ("I... erm... what? Try again.",)
         return responses
 
     #
@@ -569,7 +580,7 @@ class Chat(object):
                 Previously determined from job_title.
             username (str): Specific username for user.
         """
-        split_name = kwargs.get('person', '').split(maxsplit=1)
+        split_name = kwargs.get("person", "").split(maxsplit=1)
         split_name_len = len(split_name)
         if split_name_len == 2:
             given_name, family_name = split_name
@@ -577,40 +588,45 @@ class Chat(object):
             given_name, family_name = split_name[0], None
         else:
             given_name, family_name = None, None
-        email = kwargs.get('email')
-        job_title = kwargs.get('job_title')
-        google_groups = kwargs.get('google_groups')
+        email = kwargs.get("email")
+        job_title = kwargs.get("job_title")
+        google_groups = kwargs.get("google_groups")
         all_good = given_name and family_name and email and job_title
 
         if not all_good:
             if not (given_name and family_name):
-                self._set_action_state(step='name')
+                self._set_action_state(step="name")
                 yield "What is the employee's full name (Capitalized First & Last)?"
             elif not email:
-                self._set_action_state(step='email')
+                self._set_action_state(step="email")
                 yield "What is a personal email address for {}?".format(given_name)
             else:
-                self._set_action_state(step='title')
+                self._set_action_state(step="title")
                 yield "What is {}'s job title?".format(given_name)
-        elif google_groups and self.config.GOOGLE_GROUPS['GDEV'] == google_groups:
+        elif google_groups and self.config.GOOGLE_GROUPS["GDEV"] == google_groups:
             # Is a developer
-            self._set_action_state(step='dev_role', regexp_tokenize=True)
-            yield ("I see we're adding a developer! What team will they be on? "
-                   "Choose from: '{}'.".format("', '".join(self.config.GOOGLE_DEV_ROLES)))
+            self._set_action_state(step="dev_role", regexp_tokenize=True)
+            yield (
+                "I see we're adding a developer! What team will they be on? "
+                "Choose from: '{}'.".format("', '".join(self.config.GOOGLE_DEV_ROLES))
+            )
         else:
-            username = kwargs.get('username', given_name.lower())
+            username = kwargs.get("username", given_name.lower())
             yield "Okay, let me check if '{}' is an available Google username.".format(username)
 
             if not self.google_admin.is_username_available(username):
-                self._set_action_state(step='username', regexp_tokenize=True)
+                self._set_action_state(step="username", regexp_tokenize=True)
                 suggestion = (given_name[0] + family_name).lower()
-                yield ("Aw nuts, that name is taken. "
-                       "Might I suggest a nickname or something like {}? "
-                       "Either way, enter a new username for me to use.".format(suggestion))
+                yield (
+                    "Aw nuts, that name is taken. "
+                    "Might I suggest a nickname or something like {}? "
+                    "Either way, enter a new username for me to use.".format(suggestion)
+                )
             else:
                 yield "We're good to go! Creating the new account now."
-                responses = self.google_admin.create_user(given_name, family_name, username, email,
-                                                          job_title, google_groups)
+                responses = self.google_admin.create_user(
+                    given_name, family_name, username, email, job_title, google_groups
+                )
                 for response in responses:
                     yield response
                 yield "Google account creation complete! What's next?"
@@ -624,23 +640,25 @@ class Chat(object):
             person (str): Name of user, if not passed, will prompt for it.
             email (str): Email address, if not passed, will prompt for it.
         """
-        name = kwargs.get('person')
-        email = kwargs.get('email')
+        name = kwargs.get("person")
+        email = kwargs.get("email")
         all_good = name and email
 
         if not all_good:
             if not name:
-                self._set_action_state(step='name')
+                self._set_action_state(step="name")
                 yield "What is the user's full name?"
             else:
-                self._set_action_state(step='email')
-                yield "What is {}'s {} email address?".format(name,
-                                                              self.google_admin.primary_domain)
+                self._set_action_state(step="email")
+                yield "What is {}'s {} email address?".format(
+                    name, self.google_admin.primary_domain
+                )
         else:
             success = self.trello_admin.invite_to_trello(email, name)
             if success:
                 yield "I have invited {} to join *{}* in Trello!".format(
-                    email, self.trello_admin.trello_org)
+                    email, self.trello_admin.trello_org
+                )
             else:
                 yield "Huh, that didn't work, check out the logs?"
             yield self._clear_action_state(success, admin_required=True)
@@ -653,19 +671,22 @@ class Chat(object):
             username (str): GitHub username, if not passed, will prompt for it.
             dev_role (str): What dev role is this developer? If not passed, will prompt for it.
         """
-        username = kwargs.get('username')
-        dev_role = kwargs.get('dev_role')
+        username = kwargs.get("username")
+        dev_role = kwargs.get("dev_role")
 
         if not username:
-            self._set_action_state(step='username', regexp_tokenize=True)
+            self._set_action_state(step="username", regexp_tokenize=True)
             yield "What is the GitHub username?"
         elif not dev_role:
-            self._set_action_state(step='dev_role', regexp_tokenize=True)
-            yield ("What will be the user's dev role on our team? "
-                   "Choose from: '{}'.".format("', '".join(self.config.GITHUB_DEV_ROLES.keys())))
+            self._set_action_state(step="dev_role", regexp_tokenize=True)
+            yield (
+                "What will be the user's dev role on our team? "
+                "Choose from: '{}'.".format("', '".join(self.config.GITHUB_DEV_ROLES.keys()))
+            )
         else:
-            success = self.github_admin.invite_to_github(username,
-                                                         self.config.GITHUB_DEV_ROLES[dev_role])
+            success = self.github_admin.invite_to_github(
+                username, self.config.GITHUB_DEV_ROLES[dev_role]
+            )
             if success:
                 message = "I have invited `{}` to join *{}* in GitHub!"
             else:
@@ -680,12 +701,13 @@ class Chat(object):
         Keyword Args:
             email (str): Email address, if not passed, will prompt for it.
         """
-        email = kwargs.get('email')
+        email = kwargs.get("email")
 
         if not email:
-            self._set_action_state(step='email')
+            self._set_action_state(step="email")
             yield "What is the new user's {} email address?".format(
-                self.google_admin.primary_domain)
+                self.google_admin.primary_domain
+            )
         else:
             success = self.abacus_admin.invite_to_abacus(email)
             if success:
@@ -697,16 +719,16 @@ class Chat(object):
     def greet(self, **_):
         """Say Hello back in response to a greeting from the user."""
         yield random.choice(list(self.chunker.greetings)).title()
-        yield 'Can I help you with anything?'
+        yield "Can I help you with anything?"
         yield self._clear_action_state(action_success=True)
 
     def gz_gif(self, **_):
         """Return a random Godzilla GIF."""
-        yield 'RAWR!'
+        yield "RAWR!"
         with urlreq.urlopen(self.config.GZ_GIF_URL) as r:
-            response = json.loads(r.read().decode('utf-8'))
+            response = json.loads(r.read().decode("utf-8"))
             rand_index = random.choice(range(0, 24))
-            yield response['data'][rand_index]['images']['downsized']['url']
+            yield response["data"][rand_index]["images"]["downsized"]["url"]
         yield self._clear_action_state(action_success=True)
 
 

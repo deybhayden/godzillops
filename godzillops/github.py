@@ -31,16 +31,18 @@ class GitHubAdmin(object):
 
     def invite_to_github(self, username, teams):
         success = False
-        data = json.dumps({'role': 'member'}).encode()
+        data = json.dumps({"role": "member"}).encode()
         for team in teams:
-            members_url = self.github_api_url.format('teams/{}/memberships/{}'.format(
-                team, username))
+            members_url = self.github_api_url.format(
+                "teams/{}/memberships/{}".format(team, username)
+            )
             req = urlreq.Request(
                 url=members_url,
                 data=data,
-                method='PUT',
-                headers={'Content-Type': 'application/json'})
+                method="PUT",
+                headers={"Content-Type": "application/json"},
+            )
             with urlreq.urlopen(req) as f:
-                logging.info('Invite to github URL Request Status - %s', f.status)
+                logging.info("Invite to github URL Request Status - %s", f.status)
                 success = f.status == 200
         return success

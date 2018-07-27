@@ -28,14 +28,16 @@ class TrelloAdmin(object):
             trello_token (str): The private token of an admin user for the passed organization.
         """
         self.trello_org = trello_org
-        self.trello_api_url = "https://api.trello.com/1/{0}?key=" + trello_api_key + "&token=" + trello_token
+        self.trello_api_url = (
+            "https://api.trello.com/1/{0}?key=" + trello_api_key + "&token=" + trello_token
+        )
 
     def invite_to_trello(self, email, full_name):
         success = False
-        data = urlparse.urlencode({'email': email, 'fullName': full_name}).encode()
-        members_url = self.trello_api_url.format('organizations/{}/members'.format(self.trello_org))
-        req = urlreq.Request(url=members_url, data=data, method='PUT')
+        data = urlparse.urlencode({"email": email, "fullName": full_name}).encode()
+        members_url = self.trello_api_url.format("organizations/{}/members".format(self.trello_org))
+        req = urlreq.Request(url=members_url, data=data, method="PUT")
         with urlreq.urlopen(req) as f:
-            logging.info('Invite to Trello URL Request Status - {}'.format(f.status))
+            logging.info("Invite to Trello URL Request Status - {}".format(f.status))
             success = f.status == 200
         return success
