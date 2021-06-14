@@ -26,7 +26,7 @@ ptyprocess==0.6.0
 pudb==2018.1
 pyasn1==0.4.3
 pyasn1-modules==0.2.1
-Pygments==2.2.0
+Pygments==2.7.4
 pylint==2.0.1
 python-dateutil==2.5.2
 rsa==3.4.2
