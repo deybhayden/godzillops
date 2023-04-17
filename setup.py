@@ -12,7 +12,7 @@ with open("README.rst") as readme_file:
 with open("HISTORY.rst") as history_file:
     history = history_file.read()
 
-requirements = ["nltk==3.2.1", "python-dateutil==2.5.2", "google-api-python-client==1.5"]
+requirements = ["nltk==3.6.6", "python-dateutil==2.5.2", "google-api-python-client==1.5"]
 
 test_requirements = [
     # TODO: put package test requirements here
